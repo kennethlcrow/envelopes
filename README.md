@@ -1,4 +1,4 @@
-# Envelope Budget
+# Envelopes
 
 A lightweight, local-first envelope budgeting app built on zero-based budgeting principles. No backend, no accounts, no setup — just open and start budgeting.
 
