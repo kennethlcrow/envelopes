@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Envelope Budget</title>
+  <!-- Tailwind CSS loaded from CDN — no install or build step needed -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-900">
+
+
+  <!-- ============================================================
+    HEADER — app name and month navigator
+    The month navigator filters envelope spending and the transaction
+    list. It does NOT filter Total Cash, Total Assigned, or TBB.
+  ============================================================ -->
+  <header class="bg-white border-b border-gray-200 px-4 py-3">
+    <div class="max-w-5xl mx-auto flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-gray-800 leading-tight">Envelopes</h1>
+        <p class="text-xs font-normal text-gray-400 mt-0.5">Zero Based Budgeting</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btn-prev-month"
+          class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8592;</button>
+        <span id="current-month-label"
+          class="text-sm font-medium text-gray-700 w-32 text-center"></span>
+        <button id="btn-next-month"
+          class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8594;</button>
+      </div>
+    </div>
+  </header>
+
+
+  <!-- ============================================================
+    ZBB SUMMARY BAR — the three top-level zero-based budgeting numbers.
+
+    These are ALWAYS all-time totals — never filtered by month.
+
+    Total Cash     = all income ever - all expenses ever (real balance)
+    Total Assigned = sum of all envelope monthly budgets (the plan)
+    To Be Budgeted = Total Cash - Total Assigned
+                     (expenses reduce Total Cash, so TBB reflects actual spending)
+  ============================================================ -->
+  <section class="bg-white border-b border-gray-200 px-4 py-4">
+    <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4 text-center">
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Cash</div>
+        <div id="summary-total-cash" class="text-2xl font-bold text-gray-800">$0.00</div>
+      </div>
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Total Assigned</div>
+        <div id="summary-total-assigned" class="text-2xl font-bold text-gray-800">$0.00</div>
+      </div>
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">To Be Budgeted</div>
+        <div id="summary-tbb" class="text-2xl font-bold text-gray-800">$0.00</div>
+        <div id="summary-tbb-label" class="text-xs mt-0.5"></div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- ============================================================
+    MAIN — two-column layout: envelopes on left, transactions on right
+  ============================================================ -->
+  <main class="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
+
+    <!-- LEFT: Envelope cards -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Envelopes</h2>
+        <button id="btn-add-envelope"
+          class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded">
+          + New Envelope
+        </button>
+      </div>
+      <!-- Envelope cards are rendered here by renderEnvelopes() -->
+      <div id="envelope-list" class="space-y-3"></div>
+    </section>
+
+    <!-- RIGHT: Transaction list -->
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="transaction-panel-title"
+          class="text-xs font-semibold text-gray-500 uppercase tracking-wide">All Transactions</h2>
+        <div class="flex gap-2">
+          <button id="btn-add-expense"
+            class="text-xs bg-rose-500 hover:bg-rose-600 text-white px-3 py-1.5 rounded">
+            + Expense
+          </button>
+          <button id="btn-add-income"
+            class="text-xs bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded">
+            + Income
+          </button>
+        </div>
+      </div>
+      <!-- Transaction rows are rendered here by renderTransactions() -->
+      <div id="transaction-list" class="space-y-2"></div>
+    </section>
+
+  </main>
+
+
+  <!-- ============================================================
+    FOOTER — export and import buttons
+  ============================================================ -->
+  <footer class="border-t border-gray-200 px-4 py-4 mt-2">
+    <div class="max-w-5xl mx-auto flex items-center gap-6">
+      <button id="btn-export"
+        class="text-sm text-gray-500 hover:text-gray-800 underline">
+        Export JSON
+      </button>
+      <!-- The label acts as a styled button for the hidden file input -->
+      <label class="text-sm text-gray-500 hover:text-gray-800 underline cursor-pointer">
+        Import JSON
+        <input type="file" id="input-import" accept=".json" class="hidden" />
+      </label>
+      <!-- NEW: reset button — clears all localStorage and reloads -->
+      <button id="btn-reset"
+        class="text-sm text-gray-500 hover:text-rose-600 underline">
+        Reset Data
+      </button>
+    </div>
+  </footer>
+
+
+  <!-- ============================================================
+    MODALS — hidden form overlays, shown on demand.
+    Each modal has a dark backdrop; clicking outside the card closes it.
+  ============================================================ -->
+
+  <!-- Modal: Add Envelope -->
+  <div id="modal-add-envelope"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-4">New Envelope</h3>
+      <form id="form-add-envelope" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Name</label>
+          <input type="text" id="input-envelope-name" maxlength="40" autocomplete="off"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-envelope-name" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-2">Color</label>
+          <!-- Color swatches are rendered here by renderColorPalette() -->
+          <div id="color-palette" class="flex gap-2 flex-wrap"></div>
+          <input type="hidden" id="input-envelope-color" value="#6366f1" />
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add Expense -->
+  <div id="modal-add-expense"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-4">Add Expense</h3>
+      <form id="form-add-expense" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Envelope</label>
+          <select id="input-expense-envelope"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
+          <input type="number" id="input-expense-amount" min="0.01" step="0.01"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-expense-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Description</label>
+          <input type="text" id="input-expense-description" autocomplete="off"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Date</label>
+          <input type="date" id="input-expense-date"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded">Add Expense</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Add Income -->
+  <div id="modal-add-income"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-4">Add Income</h3>
+      <form id="form-add-income" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
+          <input type="number" id="input-income-amount" min="0.01" step="0.01"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-income-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Description</label>
+          <input type="text" id="input-income-description" autocomplete="off"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Date</label>
+          <input type="date" id="input-income-date"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded">Add Income</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- NEW MODAL: Assign Money — assigns TBB funds to a single envelope, not a transaction -->
+  <div id="modal-assign-money"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-1">Assign Money</h3>
+      <p class="text-xs text-gray-400 mb-4">
+        Assigns money from TBB to this envelope. Not a transaction — Total Cash stays the same.
+      </p>
+      <form id="form-assign-money" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
+          <input type="number" id="input-assign-amount" min="0.01" step="0.01"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-assign-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded">Assign</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Move Money -->
+  <div id="modal-move-money"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-1">Move Money</h3>
+      <!-- Clarify this is a budgeting action, not a transaction -->
+      <p class="text-xs text-gray-400 mb-4">
+        Adjusts two envelope budgets. Not a transaction — Total Cash and TBB stay the same.
+      </p>
+      <form id="form-move-money" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">From</label>
+          <select id="input-move-from"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">To</label>
+          <select id="input-move-to"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
+          <input type="number" id="input-move-amount" min="0.01" step="0.01"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-move-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Move Money</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <script>
+
+    // === DATA LAYER === (load/save, id generation)
+    // localStorage stores everything as plain text, so we use
+    // JSON.stringify (array → text) and JSON.parse (text → array).
+
+    const KEYS = {
+      envelopes:    'envelopes',
+      transactions: 'transactions',
+    };
+
+    // Load a saved array. Returns [] if nothing is stored yet.
+    function loadData(key) {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : [];
+    }
+
+    // Save an array to localStorage.
+    function saveData(key, data) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    // Make a unique ID string using the current timestamp.
+    // Example: generateId('env') → "env_1713200000000"
+    function generateId(prefix) {
+      return prefix + '_' + Date.now();
+    }
+
+
+    // === STATE === (in-memory app state object)
+    // The app's live data. Every render reads from here.
+    // After any user action, update state then call renderApp().
+
+    const state = {
+      envelopes:          [],   // All envelope objects
+      transactions:       [],   // All transaction objects (income + expense)
+      currentMonth:       '',   // "YYYY-MM" — which month is being viewed
+      selectedEnvelopeId:    null, // null = show all; string = filter by this envelope
+      assignTargetEnvelopeId: null, // tracks which envelope the Assign Money modal targets
+    };
+
+    // NEW: drag and drop state
+    let draggedEnvelopeId = null; // id of card being dragged, null when idle
+    // FIX: drag vs click — prevents dragend from triggering the click handler
+    let isDragging = false;
+
+
+    // === CALCULATIONS === (totalCash, totalAssigned, toBeBudgeted, envelopeBalance)
+    // Pure functions: read from state, return a number.
+    // Nothing is pre-stored — everything recalculates on every render.
+    // This prevents numbers from ever getting out of sync.
+
+    // Pull "YYYY-MM" out of a full date string like "2026-04-15"
+    function getYearMonth(dateStr) {
+      return dateStr.slice(0, 7);
+    }
+
+    // Format a cents integer as a dollar string: 150050 → "$1,500.50"
+    // All monetary values are stored as integer cents — divide by 100 here,
+    // and only here, before showing any number to the user.
+    function formatMoney(cents) {
+      return '$' + (Math.abs(cents) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    }
+
+    // Total Cash — the real-world running balance.
+    // = all income received minus all expenses ever recorded.
+    // Spans ALL TIME. Not filtered by month.
+    function calcTotalCash() {
+      return state.transactions.reduce((sum, t) => {
+        return t.type === 'income' ? sum + t.amount : sum - t.amount;
+      }, 0);
+    }
+
+    // Total Assigned — sum of every envelope's monthly budget.
+    // Represents the spending plan. Not affected by actual spending.
+    function calcTotalAssigned() {
+      return state.envelopes.reduce((sum, e) => sum + e.monthlyBudget, 0);
+    }
+
+    // To Be Budgeted — how much cash is left after covering all envelope budgets.
+    // = Total Cash (what you have) minus Total Assigned (what you've planned).
+    // Goal: $0 (every dollar is assigned).
+    // Positive = unassigned cash. Negative = over-budgeted.
+    // Expenses reduce Total Cash, so TBB naturally decreases as you spend.
+    function calcToBeBudgeted() {
+      return calcTotalCash() - calcTotalAssigned();
+    }
+
+    // How much has been spent on one envelope in the currently viewed month.
+    function calcEnvelopeSpent(envelopeId) {
+      return state.transactions
+        .filter(t =>
+          t.type       === 'expense' &&
+          t.envelopeId === envelopeId &&
+          getYearMonth(t.date) === state.currentMonth
+        )
+        .reduce((sum, t) => sum + t.amount, 0);
+    }
+
+    // How much of an envelope's budget is left this month.
+    // = monthlyBudget minus what's been spent this month.
+    // Can go negative (over budget) — we show a warning but don't block.
+    function calcEnvelopeRemaining(envelopeId) {
+      const env = state.envelopes.find(e => e.id === envelopeId);
+      if (!env) return 0;
+      return env.monthlyBudget - calcEnvelopeSpent(envelopeId);
+    }
+
+
+    // === RENDER === (functions that build DOM)
+    // Read state, update what's on screen.
+    // renderApp() is the main entry point — call it after any state change.
+
+    // 8 preset envelope colors for the color picker
+    const COLOR_PALETTE = [
+      '#6366f1', // indigo
+      '#10b981', // emerald
+      '#f43f5e', // rose
+      '#f59e0b', // amber
+      '#0ea5e9', // sky
+      '#8b5cf6', // violet
+      '#f97316', // orange
+      '#14b8a6', // teal
+    ];
+
+    // Convert "YYYY-MM" to a readable label like "April 2026"
+    function formatMonthLabel(ym) {
+      const [year, month] = ym.split('-');
+      return new Date(Number(year), Number(month) - 1, 1)
+        .toLocaleString('default', { month: 'long', year: 'numeric' });
+    }
+
+    // Prevent user-entered text from being interpreted as HTML.
+    // Always use this before inserting user text into innerHTML.
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Show a modal overlay by removing the 'hidden' class.
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    // Hide all modal overlays.
+    function closeAllModals() {
+      document.querySelectorAll('[id^="modal-"]').forEach(m => m.classList.add('hidden'));
+    }
+
+    // Build clickable color swatches inside the Add Envelope form.
+    function renderColorPalette() {
+      const selected  = document.getElementById('input-envelope-color').value;
+      const container = document.getElementById('color-palette');
+      container.innerHTML = COLOR_PALETTE.map(color => `
+        <button type="button"
+          class="color-swatch w-7 h-7 rounded-full border-2 transition-transform hover:scale-110
+                 ${color === selected ? 'border-gray-800 scale-110' : 'border-transparent'}"
+          style="background:${color}"
+          data-color="${color}">
+        </button>`).join('');
+    }
+
+    // Fill an envelope <select> with the current envelopes.
+    // Pass excludeId to omit one envelope (used in the Move Money "To" list).
+    function populateEnvelopeSelect(selectId, excludeId = null) {
+      const select = document.getElementById(selectId);
+      select.innerHTML = state.envelopes
+        .filter(e => e.id !== excludeId)
+        .map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`)
+        .join('');
+    }
+
+    // Update the month label in the header.
+    function renderMonthLabel() {
+      document.getElementById('current-month-label').textContent =
+        formatMonthLabel(state.currentMonth);
+    }
+
+    // Update the three ZBB summary numbers at the top of the page.
+    function renderSummaryBar() {
+      const totalCash     = calcTotalCash();
+      const totalAssigned = calcTotalAssigned();
+      const tbb           = calcToBeBudgeted();
+
+      document.getElementById('summary-total-cash').textContent =
+        (totalCash < 0 ? '-' : '') + formatMoney(totalCash);
+      document.getElementById('summary-total-assigned').textContent =
+        formatMoney(totalAssigned);
+
+      const tbbEl    = document.getElementById('summary-tbb');
+      const tbbLabel = document.getElementById('summary-tbb-label');
+
+      tbbEl.textContent = (tbb < 0 ? '-' : '') + formatMoney(tbb);
+
+      // Color-code TBB to guide the user toward $0
+      if (tbb > 0) {
+        tbbEl.className      = 'text-2xl font-bold text-amber-500';
+        tbbLabel.textContent = 'Unassigned — add to an envelope';
+        tbbLabel.className   = 'text-xs text-amber-500 mt-0.5';
+      } else if (tbb < 0) {
+        tbbEl.className      = 'text-2xl font-bold text-rose-500';
+        tbbLabel.textContent = 'Over-budgeted — reduce envelope totals';
+        tbbLabel.className   = 'text-xs text-rose-500 mt-0.5';
+      } else {
+        tbbEl.className      = 'text-2xl font-bold text-emerald-600';
+        tbbLabel.textContent = 'All money assigned ✓';
+        tbbLabel.className   = 'text-xs text-emerald-600 mt-0.5';
+      }
+    }
+
+    // Render all envelope cards in the left column.
+    function renderEnvelopes() {
+      const container = document.getElementById('envelope-list');
+      // NEW BUTTON: pre-calculate TBB once so each card can hide the button when TBB ≤ 0
+      const tbb = calcToBeBudgeted();
+
+      if (state.envelopes.length === 0) {
+        container.innerHTML = `
+          <p class="text-sm text-gray-400 text-center py-10">
+            No envelopes yet.<br/>Create one to start budgeting.
+          </p>`;
+        return;
+      }
+
+      container.innerHTML = state.envelopes.map(env => {
+        const spent      = calcEnvelopeSpent(env.id);
+        const remaining  = calcEnvelopeRemaining(env.id);
+        const isOver     = remaining < 0;
+        const isSelected = state.selectedEnvelopeId === env.id;
+
+        // Progress bar: % of budget spent this month, capped at 100% visually
+        const pct      = env.monthlyBudget > 0
+          ? Math.min((spent / env.monthlyBudget) * 100, 100)
+          : 0;
+        const barColor = isOver     ? 'bg-rose-500'
+                       : pct >= 80 ? 'bg-amber-400'
+                                   : 'bg-emerald-500';
+
+        return `
+          <div
+            draggable="true"
+            class="bg-white rounded-lg border p-4 cursor-grab transition-all duration-150 hover:shadow-md select-none
+                   ${isSelected ? 'ring-2 ring-indigo-400 shadow-md' : 'shadow-sm'}"
+            style="border-left: 4px solid ${env.color}"
+            data-envelope-id="${env.id}"
+          >
+            <!-- Top row: name + remaining balance -->
+            <div class="flex items-start justify-between mb-2">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">${escapeHtml(env.name)}</div>
+                <div class="text-xs text-gray-400">
+                  ${env.monthlyBudget === 0 ? 'No funds assigned' : 'Assigned: ' + formatMoney(env.monthlyBudget)}
+                </div>
+              </div>
+              <div class="text-right">
+                <div class="text-sm font-bold ${isOver ? 'text-rose-500' : 'text-gray-800'}">
+                  ${isOver ? '-' : ''}${formatMoney(remaining)}
+                </div>
+                <div class="text-xs text-gray-400">remaining</div>
+              </div>
+            </div>
+
+            <!-- Spending progress bar -->
+            <div class="w-full bg-gray-100 rounded-full h-1.5 mb-2">
+              <div class="h-1.5 rounded-full ${barColor}" style="width:${pct}%"></div>
+            </div>
+
+            ${isOver ? '<div class="text-xs text-rose-400 mb-2">Over budget this month</div>' : ''}
+
+            <!-- Bottom row: spent amount + action buttons -->
+            <div class="flex items-center justify-between">
+              <div class="text-xs text-gray-400">Spent: ${formatMoney(spent)}</div>
+              <div class="flex gap-3">
+                <!-- NEW BUTTON: only shown when TBB > 0; assigns TBB funds to this envelope -->
+                ${tbb > 0 ? `<button
+                  class="btn-assign-money text-xs text-emerald-500 hover:text-emerald-700"
+                  data-envelope-id="${env.id}">
+                  + Add Funds
+                </button>` : ''}
+                <button
+                  class="btn-move-money text-xs text-indigo-400 hover:text-indigo-600"
+                  data-envelope-id="${env.id}">
+                  ⇄ Move
+                </button>
+                <button
+                  class="btn-delete-envelope text-xs text-gray-300 hover:text-rose-500"
+                  data-envelope-id="${env.id}">
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Render the transaction list in the right column.
+    function renderTransactions() {
+      const container = document.getElementById('transaction-list');
+      const titleEl   = document.getElementById('transaction-panel-title');
+
+      // Start with all transactions in the currently viewed month
+      let txns = state.transactions.filter(
+        t => getYearMonth(t.date) === state.currentMonth
+      );
+
+      // If an envelope is selected, show only that envelope's expenses.
+      // Income is global — it never belongs to a specific envelope.
+      if (state.selectedEnvelopeId) {
+        const env = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+        titleEl.textContent = env ? env.name : 'Transactions';
+        txns = txns.filter(
+          t => t.type === 'expense' && t.envelopeId === state.selectedEnvelopeId
+        );
+      } else {
+        titleEl.textContent = 'All Transactions';
+      }
+
+      // Show newest date first
+      txns.sort((a, b) => b.date.localeCompare(a.date));
+
+      if (txns.length === 0) {
+        container.innerHTML = `
+          <p class="text-sm text-gray-400 text-center py-10">
+            No transactions for this ${state.selectedEnvelopeId ? 'envelope' : 'month'}.
+          </p>`;
+        return;
+      }
+
+      container.innerHTML = txns.map(t => {
+        const isIncome = t.type === 'income';
+        const env      = state.envelopes.find(e => e.id === t.envelopeId);
+        const label    = isIncome ? 'Income' : (env ? env.name : '—');
+        const dotColor = isIncome ? '#10b981' : (env ? env.color : '#ccc');
+
+        return `
+          <div class="bg-white rounded shadow-sm p-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-3 min-w-0">
+              <!-- Colored dot: green for income, envelope color for expenses -->
+              <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${dotColor}"></div>
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-800 truncate">
+                  ${escapeHtml(t.description || label)}
+                </div>
+                <div class="text-xs text-gray-400">${t.date} · ${escapeHtml(label)}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="text-sm font-semibold ${isIncome ? 'text-emerald-600' : 'text-gray-800'}">
+                ${isIncome ? '+' : '−'}${formatMoney(t.amount)}
+              </div>
+              <button
+                class="btn-delete-transaction text-gray-300 hover:text-rose-500 text-xs ml-1"
+                data-transaction-id="${t.id}">✕</button>
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    // Master render — call this after any state change.
+    function renderApp() {
+      renderMonthLabel();
+      renderSummaryBar();
+      renderEnvelopes();
+      renderTransactions();
+    }
+
+
+    // === EVENT HANDLERS === (form submissions, clicks)
+    // One handler function per user action, then event wiring at the end.
+    // For dynamically re-rendered elements (envelope cards, transaction rows)
+    // we use event delegation: one listener on the parent checks which child
+    // was clicked. This is more efficient than a listener per button.
+
+    // Create a new envelope
+    function handleAddEnvelope(e) {
+      e.preventDefault();
+
+      const name    = document.getElementById('input-envelope-name').value.trim();
+      const nameErr = document.getElementById('error-envelope-name');
+      nameErr.classList.add('hidden');
+
+      if (!name) {
+        nameErr.textContent = 'Name is required.';
+        nameErr.classList.remove('hidden');
+        return;
+      }
+      if (state.envelopes.some(env => env.name.toLowerCase() === name.toLowerCase())) {
+        nameErr.textContent = 'An envelope with this name already exists.';
+        nameErr.classList.remove('hidden');
+        return;
+      }
+
+      // REMOVED: budget input — envelopes start at 0 and are funded via Assign Money
+      const newEnvelope = {
+        id:            generateId('env'),
+        name,
+        monthlyBudget: 0,
+        color:         document.getElementById('input-envelope-color').value,
+        createdAt:     new Date().toISOString(),
+      };
+
+      state.envelopes.push(newEnvelope);
+      saveData(KEYS.envelopes, state.envelopes);
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // Delete an envelope and cascade-delete all its transactions
+    function handleDeleteEnvelope(envelopeId) {
+      const env = state.envelopes.find(e => e.id === envelopeId);
+      if (!env) return;
+
+      const txnCount = state.transactions.filter(t => t.envelopeId === envelopeId).length;
+      const msg = txnCount > 0
+        ? `Delete "${env.name}"? This will also delete ${txnCount} transaction(s).`
+        : `Delete "${env.name}"?`;
+
+      if (!confirm(msg)) return;
+
+      state.envelopes    = state.envelopes.filter(e => e.id !== envelopeId);
+      state.transactions = state.transactions.filter(t => t.envelopeId !== envelopeId);
+
+      saveData(KEYS.envelopes, state.envelopes);
+      saveData(KEYS.transactions, state.transactions);
+
+      if (state.selectedEnvelopeId === envelopeId) state.selectedEnvelopeId = null;
+
+      renderApp();
+    }
+
+    // Add an expense transaction
+    function handleAddExpense(e) {
+      e.preventDefault();
+
+      // FIX: input handling — cents inline, no NaN can reach state
+      const rawExpense = document.getElementById('input-expense-amount').value;
+      const amount     = rawExpense ? Math.round(parseFloat(rawExpense) * 100) : 0; // cents
+      const date       = document.getElementById('input-expense-date').value;
+      const amountErr  = document.getElementById('error-expense-amount');
+      amountErr.classList.add('hidden');
+
+      if (!amount || amount <= 0) {
+        amountErr.textContent = 'Enter an amount greater than $0.';
+        amountErr.classList.remove('hidden');
+        return;
+      }
+      if (!date) {
+        amountErr.textContent = 'A date is required.';
+        amountErr.classList.remove('hidden');
+        return;
+      }
+
+      const newTxn = {
+        id:          generateId('txn'),
+        type:        'expense',
+        envelopeId:  document.getElementById('input-expense-envelope').value,
+        amount,      // already integer cents
+        description: document.getElementById('input-expense-description').value.trim(),
+        date,
+        createdAt:   new Date().toISOString(),
+      };
+
+      state.transactions.push(newTxn);
+      saveData(KEYS.transactions, state.transactions);
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // Add an income transaction (envelopeId is always null — income is global)
+    function handleAddIncome(e) {
+      e.preventDefault();
+
+      // FIX: input handling — cents inline, no NaN can reach state
+      const rawIncome = document.getElementById('input-income-amount').value;
+      const amount    = rawIncome ? Math.round(parseFloat(rawIncome) * 100) : 0; // cents
+      const date      = document.getElementById('input-income-date').value;
+      const amountErr = document.getElementById('error-income-amount');
+      amountErr.classList.add('hidden');
+
+      if (!amount || amount <= 0) {
+        amountErr.textContent = 'Enter an amount greater than $0.';
+        amountErr.classList.remove('hidden');
+        return;
+      }
+      if (!date) {
+        amountErr.textContent = 'A date is required.';
+        amountErr.classList.remove('hidden');
+        return;
+      }
+
+      const newTxn = {
+        id:          generateId('txn'),
+        type:        'income',
+        envelopeId:  null,  // income never belongs to an envelope
+        amount,      // already integer cents
+        description: document.getElementById('input-income-description').value.trim(),
+        date,
+        createdAt:   new Date().toISOString(),
+      };
+
+      state.transactions.push(newTxn);
+      saveData(KEYS.transactions, state.transactions);
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // Delete a transaction
+    function handleDeleteTransaction(txnId) {
+      if (!confirm('Delete this transaction?')) return;
+      state.transactions = state.transactions.filter(t => t.id !== txnId);
+      saveData(KEYS.transactions, state.transactions);
+      renderApp();
+    }
+
+    // Move money between two envelopes.
+    // NOT a transaction — only adjusts two monthlyBudget values.
+    // Total Cash, Total Assigned, and TBB are all unchanged.
+    function handleMoveMoney(e) {
+      e.preventDefault();
+
+      const fromId    = document.getElementById('input-move-from').value;
+      const toId      = document.getElementById('input-move-to').value;
+      // FIX: NaN handling — guard against empty input before parseFloat
+      const rawMove   = document.getElementById('input-move-amount').value;
+      const amount    = rawMove ? Math.round(parseFloat(rawMove) * 100) : 0; // cents
+      const errEl     = document.getElementById('error-move-amount');
+      errEl.classList.add('hidden');
+
+      const fromEnv = state.envelopes.find(env => env.id === fromId);
+
+      if (!amount || amount <= 0) {
+        errEl.textContent = 'Enter an amount greater than $0.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      // Prevent the from-envelope's budget going below $0
+      if (amount > fromEnv.monthlyBudget) {
+        errEl.textContent = `Cannot move more than ${formatMoney(fromEnv.monthlyBudget)} from "${fromEnv.name}".`;
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      // Adjust both budgets — this is the entire operation (integer subtraction/addition)
+      state.envelopes = state.envelopes.map(env => {
+        if (env.id === fromId)
+          return { ...env, monthlyBudget: env.monthlyBudget - amount };
+        if (env.id === toId)
+          return { ...env, monthlyBudget: env.monthlyBudget + amount };
+        return env;
+      });
+
+      saveData(KEYS.envelopes, state.envelopes);
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // NEW HANDLER: Assign money from TBB to one envelope.
+    // NOT a transaction — only increases one envelope's monthlyBudget.
+    // Total Cash is unchanged; TBB decreases by the assigned amount.
+    function handleAssignMoney(e) {
+      e.preventDefault();
+
+      // FIX: NaN handling — guard against empty input before parseFloat
+      const rawAssign = document.getElementById('input-assign-amount').value;
+      const amount    = rawAssign ? Math.round(parseFloat(rawAssign) * 100) : 0; // cents
+      const errEl     = document.getElementById('error-assign-amount');
+      errEl.classList.add('hidden');
+
+      const tbb = calcToBeBudgeted();
+
+      // FIX: assign error message — distinguish over-budgeted from exactly-zero TBB
+      if (tbb <= 0) {
+        errEl.textContent = tbb < 0
+          ? 'You are over-budgeted. Reduce assigned amounts first.'
+          : 'No money available to assign (TBB is $0).';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (!amount || amount <= 0) {
+        errEl.textContent = 'Enter an amount greater than $0.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (amount > tbb) {
+        errEl.textContent = `Cannot assign more than ${formatMoney(tbb)} (current TBB).`;
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      state.envelopes = state.envelopes.map(e =>
+        e.id === state.assignTargetEnvelopeId
+          ? { ...e, monthlyBudget: e.monthlyBudget + amount }
+          : e
+      );
+
+      saveData(KEYS.envelopes, state.envelopes);
+      // FIX: reset assign target after use
+      state.assignTargetEnvelopeId = null;
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // Navigate to the previous or next month
+    function changeMonth(direction) {
+      const [year, month] = state.currentMonth.split('-').map(Number);
+      const d = new Date(year, month - 1 + direction, 1);
+      state.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      renderApp();
+    }
+
+    // Download all data as a JSON file.
+    // Bundles envelopes, transactions, and settings as per the plan.
+    function handleExport() {
+      const payload = JSON.stringify({
+        envelopes:    state.envelopes,
+        transactions: state.transactions,
+        settings:     {},
+      }, null, 2);
+      const link    = document.createElement('a');
+      link.href     = 'data:application/json;charset=utf-8,' + encodeURIComponent(payload);
+      link.download = `budget-export-${state.currentMonth}.json`;
+      link.click();
+    }
+
+    // Load data from a JSON file and replace everything in localStorage.
+    function handleImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        let data;
+        try {
+          data = JSON.parse(evt.target.result);
+        } catch {
+          alert('Could not read file. Make sure it is a valid JSON export.');
+          return;
+        }
+
+        // Validate shape before touching any saved data
+        if (!Array.isArray(data.envelopes) || !Array.isArray(data.transactions)) {
+          alert('File is missing envelopes or transactions. Import cancelled.');
+          return;
+        }
+        // Each envelope must have an id
+        if (!data.envelopes.every(e => e.id)) {
+          alert('Some envelopes are missing an id. Import cancelled.');
+          return;
+        }
+        // Each transaction must have an id and a valid type
+        const validTypes = new Set(['income', 'expense']);
+        if (!data.transactions.every(t => t.id && validTypes.has(t.type))) {
+          alert('Some transactions have missing or invalid data. Import cancelled.');
+          return;
+        }
+
+        if (!confirm('This will replace all current data. Continue?')) return;
+
+        state.envelopes    = data.envelopes;
+        state.transactions = data.transactions;
+        saveData(KEYS.envelopes, state.envelopes);
+        saveData(KEYS.transactions, state.transactions);
+        renderApp();
+      };
+      reader.readAsText(file);
+      e.target.value = ''; // reset so the same file can be re-imported
+    }
+
+    // Returns today's date as "YYYY-MM-DD" for pre-filling date inputs
+    function todayDateString() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    // Attach all event listeners once at startup
+    function wireEvents() {
+
+      // Month navigation
+      document.getElementById('btn-prev-month').addEventListener('click', () => changeMonth(-1));
+      document.getElementById('btn-next-month').addEventListener('click', () => changeMonth(1));
+
+      // Open: Add Envelope modal
+      document.getElementById('btn-add-envelope').addEventListener('click', () => {
+        document.getElementById('form-add-envelope').reset();
+        document.getElementById('error-envelope-name').classList.add('hidden');
+        document.getElementById('input-envelope-color').value = '#6366f1';
+        renderColorPalette();
+        openModal('modal-add-envelope');
+      });
+
+      // Open: Add Expense modal
+      document.getElementById('btn-add-expense').addEventListener('click', () => {
+        if (state.envelopes.length === 0) {
+          alert('Create at least one envelope before adding an expense.');
+          return;
+        }
+        document.getElementById('form-add-expense').reset();
+        document.getElementById('error-expense-amount').classList.add('hidden');
+        populateEnvelopeSelect('input-expense-envelope');
+        if (state.selectedEnvelopeId) {
+          document.getElementById('input-expense-envelope').value = state.selectedEnvelopeId;
+        }
+        document.getElementById('input-expense-date').value = todayDateString();
+        openModal('modal-add-expense');
+      });
+
+      // Open: Add Income modal
+      document.getElementById('btn-add-income').addEventListener('click', () => {
+        document.getElementById('form-add-income').reset();
+        document.getElementById('error-income-amount').classList.add('hidden');
+        document.getElementById('input-income-date').value = todayDateString();
+        openModal('modal-add-income');
+      });
+
+      // Form submissions
+      document.getElementById('form-add-envelope').addEventListener('submit', handleAddEnvelope);
+      document.getElementById('form-add-expense').addEventListener('submit', handleAddExpense);
+      document.getElementById('form-add-income').addEventListener('submit', handleAddIncome);
+      document.getElementById('form-move-money').addEventListener('submit', handleMoveMoney);
+      // EVENT WIRING CHANGES: Assign Money form submit
+      document.getElementById('form-assign-money').addEventListener('submit', handleAssignMoney);
+
+      // When "From" changes in Move Money, refresh "To" to exclude that envelope
+      document.getElementById('input-move-from').addEventListener('change', () => {
+        populateEnvelopeSelect('input-move-to', document.getElementById('input-move-from').value);
+      });
+
+      // Color swatch clicks in the Add Envelope modal
+      document.getElementById('color-palette').addEventListener('click', e => {
+        const swatch = e.target.closest('.color-swatch');
+        if (!swatch) return;
+        document.getElementById('input-envelope-color').value = swatch.dataset.color;
+        renderColorPalette();
+      });
+
+      // Close modals via Cancel buttons
+      document.querySelectorAll('.modal-close').forEach(btn => {
+        btn.addEventListener('click', closeAllModals);
+      });
+
+      // Close modals by clicking the dark backdrop (outside the white card)
+      document.querySelectorAll('[id^="modal-"]').forEach(modal => {
+        modal.addEventListener('click', evt => {
+          if (evt.target === modal) closeAllModals();
+        });
+      });
+
+      // Delegated: envelope list — click handling
+      const envelopeList = document.getElementById('envelope-list');
+
+      envelopeList.addEventListener('click', e => {
+        // FIX: drag vs click — suppress the post-drag click and reset so future clicks work
+        if (isDragging) {
+          isDragging = false;
+          return;
+        }
+
+        const assignBtn = e.target.closest('.btn-assign-money');
+        if (assignBtn) {
+          e.stopPropagation();
+          state.assignTargetEnvelopeId = assignBtn.dataset.envelopeId;
+          document.getElementById('form-assign-money').reset();
+          document.getElementById('error-assign-amount').classList.add('hidden');
+          openModal('modal-assign-money');
+          // UX: autofocus the amount field so the user can type immediately
+          document.getElementById('input-assign-amount').focus();
+          return;
+        }
+
+        const moveBtn = e.target.closest('.btn-move-money');
+        if (moveBtn) {
+          // FIX: stopPropagation — prevent card selection from also firing
+          e.stopPropagation();
+          if (state.envelopes.length < 2) {
+            alert('You need at least two envelopes to move money.');
+            return;
+          }
+          document.getElementById('form-move-money').reset();
+          document.getElementById('error-move-amount').classList.add('hidden');
+          populateEnvelopeSelect('input-move-from');
+          document.getElementById('input-move-from').value = moveBtn.dataset.envelopeId;
+          populateEnvelopeSelect('input-move-to', moveBtn.dataset.envelopeId);
+          openModal('modal-move-money');
+          return;
+        }
+
+        const deleteBtn = e.target.closest('.btn-delete-envelope');
+        if (deleteBtn) {
+          // FIX: stopPropagation — prevent card selection from also firing
+          e.stopPropagation();
+          handleDeleteEnvelope(deleteBtn.dataset.envelopeId);
+          return;
+        }
+
+        // Clicking the card body selects/deselects the envelope filter
+        const card = e.target.closest('[data-envelope-id]');
+        if (card) {
+          const id = card.dataset.envelopeId;
+          state.selectedEnvelopeId = state.selectedEnvelopeId === id ? null : id;
+          renderApp();
+        }
+      });
+
+      // Drag and drop — reorder envelopes by dragging cards
+      envelopeList.addEventListener('dragstart', e => {
+        const card = e.target.closest('[data-envelope-id]');
+        if (!card) return;
+        draggedEnvelopeId = card.dataset.envelopeId;
+        // FIX: drag vs click — mark drag in progress so the click handler ignores the drop
+        isDragging = true;
+        // NEW: drag UX — fade card + switch to grabbing cursor
+        requestAnimationFrame(() => {
+          card.style.opacity = '0.45';
+          card.classList.add('cursor-grabbing');
+        });
+      });
+
+      envelopeList.addEventListener('dragend', e => {
+        const card = e.target.closest('[data-envelope-id]');
+        if (card) {
+          card.style.opacity = '';
+          card.classList.remove('cursor-grabbing');
+        }
+        // FIX: drag cleanup — remove hover highlight from all cards on drag end
+        document.querySelectorAll('[data-envelope-id]')
+          .forEach(c => c.classList.remove('ring-2', 'ring-indigo-300'));
+        draggedEnvelopeId = null;
+        // FIX: drag timing — 50ms gives the browser time to fire the post-drag click before reset
+        setTimeout(() => { isDragging = false; }, 50);
+      });
+
+      // FIX: dragleave — remove highlight when cursor exits a card to prevent stuck highlights
+      envelopeList.addEventListener('dragleave', e => {
+        const card = e.target.closest('[data-envelope-id]');
+        if (!card) return;
+        card.classList.remove('ring-2', 'ring-indigo-300');
+      });
+
+      // dragover must be prevented to allow drop events to fire
+      envelopeList.addEventListener('dragover', e => {
+        e.preventDefault();
+        // NEW: drag hover feedback — highlight the card the user is hovering over
+        const card = e.target.closest('[data-envelope-id]');
+        if (!card) return;
+        document.querySelectorAll('[data-envelope-id]')
+          .forEach(c => c.classList.remove('ring-2', 'ring-indigo-300'));
+        card.classList.add('ring-2', 'ring-indigo-300');
+      });
+
+      envelopeList.addEventListener('drop', e => {
+        e.preventDefault();
+        const targetCard = e.target.closest('[data-envelope-id]');
+        if (!targetCard || !draggedEnvelopeId) return;
+        const targetId = targetCard.dataset.envelopeId;
+        if (targetId === draggedEnvelopeId) return;
+
+        const fromIdx = state.envelopes.findIndex(env => env.id === draggedEnvelopeId);
+        const toIdx   = state.envelopes.findIndex(env => env.id === targetId);
+        if (fromIdx === -1 || toIdx === -1) return;
+
+        // FIX: drop positioning — insert above or below target based on cursor position
+        const rect       = targetCard.getBoundingClientRect();
+        const isBelow    = e.clientY > rect.top + rect.height / 2;
+        const insertIndex = isBelow ? toIdx + 1 : toIdx;
+
+        const reordered = [...state.envelopes];
+        const [dragged] = reordered.splice(fromIdx, 1);
+        // Adjust insert index for the removal shift when dragging downward
+        reordered.splice(insertIndex > fromIdx ? insertIndex - 1 : insertIndex, 0, dragged);
+
+        state.envelopes = reordered;
+        saveData(KEYS.envelopes, state.envelopes);
+        renderApp();
+      });
+
+      // Delegated: transaction list
+      document.getElementById('transaction-list').addEventListener('click', e => {
+        const deleteBtn = e.target.closest('.btn-delete-transaction');
+        if (deleteBtn) handleDeleteTransaction(deleteBtn.dataset.transactionId);
+      });
+
+      // Footer: export / import / reset
+      document.getElementById('btn-export').addEventListener('click', handleExport);
+      document.getElementById('input-import').addEventListener('change', handleImport);
+      // EVENT WIRING CHANGES: reset button
+      document.getElementById('btn-reset').addEventListener('click', handleResetData);
+    }
+
+
+    // NEW: reset handler — wipes all localStorage and reloads the page
+    function handleResetData() {
+      if (!confirm('This will delete ALL data. Continue?')) return;
+      localStorage.clear();
+      location.reload();
+    }
+
+
+    // === INIT === (startup, wire up events)
+    // Load saved data from localStorage and start the app.
+    // Runs once when the page finishes loading.
+
+    function init() {
+      state.envelopes    = loadData(KEYS.envelopes);
+      state.transactions = loadData(KEYS.transactions);
+
+      // Always open on the current calendar month
+      const now = new Date();
+      state.currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      wireEvents();
+      renderApp();
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+
+  </script>
+
+</body>
+</html>
