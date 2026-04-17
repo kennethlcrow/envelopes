@@ -12,8 +12,10 @@
 
   <!-- ============================================================
     HEADER — app name and month navigator
-    The month navigator filters envelope spending and the transaction
-    list. It does NOT filter Total Cash, Total Assigned, or TBB.
+    The month picker (prev/next arrows) is the primary time control.
+    "All Time" button switches to an unfiltered view.
+    Navigating months exits All Time mode automatically.
+    Total Cash, Total Assigned, and TBB are always all-time totals.
   ============================================================ -->
   <header class="bg-white border-b border-gray-200 px-4 py-3">
     <div class="max-w-5xl mx-auto flex items-center justify-between">
@@ -21,13 +23,19 @@
         <h1 class="text-xl font-bold text-gray-800 leading-tight">Envelopes</h1>
         <p class="text-xs font-normal text-gray-400 mt-0.5">Zero Based Budgeting</p>
       </div>
-      <div class="flex items-center gap-2">
-        <button id="btn-prev-month"
-          class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8592;</button>
-        <span id="current-month-label"
-          class="text-sm font-medium text-gray-700 w-32 text-center"></span>
-        <button id="btn-next-month"
-          class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8594;</button>
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <button id="btn-prev-month"
+            class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8592;</button>
+          <span id="current-month-label"
+            class="text-sm font-medium text-gray-700 w-32 text-center"></span>
+          <button id="btn-next-month"
+            class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8594;</button>
+        </div>
+        <button id="btn-all-time"
+          class="text-sm text-gray-400 hover:text-gray-700 underline">
+          All Time
+        </button>
       </div>
     </div>
   </header>
@@ -40,8 +48,8 @@
 
     Total Cash     = all income ever - all expenses ever (real balance)
     Total Assigned = sum of all envelope monthly budgets (the plan)
-    To Be Budgeted = Total Cash - Total Assigned
-                     (expenses reduce Total Cash, so TBB reflects actual spending)
+    To Be Budgeted = Total Income - Total Assigned
+                     (only income and assignments affect TBB, not expenses)
   ============================================================ -->
   <section class="bg-white border-b border-gray-200 px-4 py-4">
     <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4 text-center">
@@ -60,6 +68,28 @@
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">To Be Budgeted</div>
         <div id="summary-tbb" class="text-2xl font-bold text-gray-800">$0.00</div>
         <div id="summary-tbb-label" class="text-xs mt-0.5"></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Filtered summary — respects the active date filter (currentMonth / lastMonth / allTime) -->
+  <section class="bg-gray-50 border-b border-gray-200 px-4 py-3">
+    <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4 text-center">
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Income</div>
+        <div id="summary-income" class="text-lg font-semibold">$0.00</div>
+      </div>
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Expenses</div>
+        <div id="summary-expenses" class="text-lg font-semibold">$0.00</div>
+      </div>
+
+      <div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1">Net</div>
+        <div id="summary-net" class="text-lg font-semibold">$0.00</div>
       </div>
 
     </div>
@@ -89,7 +119,7 @@
       <div class="flex items-center justify-between mb-3">
         <h2 id="transaction-panel-title"
           class="text-xs font-semibold text-gray-500 uppercase tracking-wide">All Transactions</h2>
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center">
           <button id="btn-add-expense"
             class="text-xs bg-rose-500 hover:bg-rose-600 text-white px-3 py-1.5 rounded">
             + Expense
@@ -100,7 +130,12 @@
           </button>
         </div>
       </div>
-      <!-- Transaction rows are rendered here by renderTransactions() -->
+      <!-- View toggle: Transactions / Budget Activity -->
+      <div class="flex mb-3">
+        <button id="btn-view-transactions" type="button"></button>
+        <button id="btn-view-activity"     type="button"></button>
+      </div>
+      <!-- Transaction / budget-log rows are rendered here -->
       <div id="transaction-list" class="space-y-2"></div>
     </section>
 
@@ -121,6 +156,10 @@
         Import JSON
         <input type="file" id="input-import" accept=".json" class="hidden" />
       </label>
+      <button id="btn-export-csv"
+        class="text-sm text-gray-500 hover:text-gray-800 underline">
+        Export CSV
+      </button>
       <!-- NEW: reset button — clears all localStorage and reloads -->
       <button id="btn-reset"
         class="text-sm text-gray-500 hover:text-rose-600 underline">
@@ -254,6 +293,30 @@
     </div>
   </div>
 
+  <!-- Modal: Remove Funds — moves money from an envelope back to TBB, not a transaction -->
+  <div id="modal-remove-money"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-1">Remove Funds</h3>
+      <p class="text-xs text-gray-400 mb-4">
+        Returns money from this envelope to TBB. Not a transaction — Total Cash stays the same.
+      </p>
+      <form id="form-remove-money" class="space-y-4" novalidate>
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
+          <input type="number" id="input-remove-amount" min="0.01" step="0.01"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+          <div id="error-remove-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="submit"
+            class="text-sm bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded">Remove</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Modal: Move Money -->
   <div id="modal-move-money"
     class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
@@ -301,6 +364,7 @@
     const KEYS = {
       envelopes:    'envelopes',
       transactions: 'transactions',
+      budgetLog:    'budgetLog',
     };
 
     // Load a saved array. Returns [] if nothing is stored yet.
@@ -331,7 +395,13 @@
       currentMonth:       '',   // "YYYY-MM" — which month is being viewed
       selectedEnvelopeId:    null, // null = show all; string = filter by this envelope
       assignTargetEnvelopeId: null, // tracks which envelope the Assign Money modal targets
+      removeTargetEnvelopeId: null, // tracks which envelope the Remove Funds modal targets
+      budgetLog:              [],   // log of assign/remove/move actions (display only, never used in math)
+      allTime:                false, // true = show all dates; false = show state.currentMonth only
     };
+
+    // Which panel is shown in the right column: 'transactions' or 'activity'
+    let viewMode = 'transactions';
 
     // NEW: drag and drop state
     let draggedEnvelopeId = null; // id of card being dragged, null when idle
@@ -344,9 +414,11 @@
     // Nothing is pre-stored — everything recalculates on every render.
     // This prevents numbers from ever getting out of sync.
 
-    // Pull "YYYY-MM" out of a full date string like "2026-04-15"
-    function getYearMonth(dateStr) {
-      return dateStr.slice(0, 7);
+    // === DATE UTILITIES ===
+
+    function getToday() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     // Format a cents integer as a dollar string: 150050 → "$1,500.50"
@@ -365,29 +437,56 @@
       }, 0);
     }
 
+    // Total Income — cumulative income ever recorded. Spans ALL TIME.
+    // Used by calcToBeBudgeted() so that expenses do not affect TBB.
+    function calcTotalIncome() {
+      return state.transactions.reduce((sum, t) => {
+        return t.type === 'income' ? sum + t.amount : sum;
+      }, 0);
+    }
+
     // Total Assigned — sum of every envelope's monthly budget.
     // Represents the spending plan. Not affected by actual spending.
     function calcTotalAssigned() {
       return state.envelopes.reduce((sum, e) => sum + e.monthlyBudget, 0);
     }
 
-    // To Be Budgeted — how much cash is left after covering all envelope budgets.
-    // = Total Cash (what you have) minus Total Assigned (what you've planned).
+    // To Be Budgeted — how much income is left after covering all envelope budgets.
+    // = Total Income (money ever received) minus Total Assigned (money planned).
     // Goal: $0 (every dollar is assigned).
-    // Positive = unassigned cash. Negative = over-budgeted.
-    // Expenses reduce Total Cash, so TBB naturally decreases as you spend.
+    // Positive = unassigned income. Negative = over-budgeted.
+    // Expenses do NOT affect TBB — they reduce envelope balances instead.
     function calcToBeBudgeted() {
-      return calcTotalCash() - calcTotalAssigned();
+      return calcTotalIncome() - calcTotalAssigned();
     }
 
-    // How much has been spent on one envelope in the currently viewed month.
+    // Return transactions for the active view: all dates, or current month only.
+    function filterByView(transactions) {
+      if (state.allTime) return transactions;
+      return transactions.filter(t => t.date.startsWith(state.currentMonth));
+    }
+
+    // Filtered summary — respects the active month / all-time view.
+    function calcFilteredIncome() {
+      return filterByView(state.transactions)
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + t.amount, 0);
+    }
+
+    function calcFilteredExpenses() {
+      return filterByView(state.transactions)
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + t.amount, 0);
+    }
+
+    function calcFilteredNet() {
+      return calcFilteredIncome() - calcFilteredExpenses();
+    }
+
+    // How much has been spent on one envelope in the active view period.
     function calcEnvelopeSpent(envelopeId) {
-      return state.transactions
-        .filter(t =>
-          t.type       === 'expense' &&
-          t.envelopeId === envelopeId &&
-          getYearMonth(t.date) === state.currentMonth
-        )
+      return filterByView(state.transactions)
+        .filter(t => t.type === 'expense' && t.envelopeId === envelopeId)
         .reduce((sum, t) => sum + t.amount, 0);
     }
 
@@ -468,10 +567,26 @@
         .join('');
     }
 
-    // Update the month label in the header.
+    // Update the month label and arrow state in the header.
     function renderMonthLabel() {
-      document.getElementById('current-month-label').textContent =
-        formatMonthLabel(state.currentMonth);
+      const label   = document.getElementById('current-month-label');
+      const prevBtn = document.getElementById('btn-prev-month');
+      const nextBtn = document.getElementById('btn-next-month');
+      const allTimeBtn = document.getElementById('btn-all-time');
+
+      if (state.allTime) {
+        label.textContent = 'All Time';
+        prevBtn.classList.add('opacity-30', 'pointer-events-none');
+        nextBtn.classList.add('opacity-30', 'pointer-events-none');
+        allTimeBtn.classList.add('text-indigo-600', 'font-medium');
+        allTimeBtn.classList.remove('text-gray-400');
+      } else {
+        label.textContent = formatMonthLabel(state.currentMonth);
+        prevBtn.classList.remove('opacity-30', 'pointer-events-none');
+        nextBtn.classList.remove('opacity-30', 'pointer-events-none');
+        allTimeBtn.classList.remove('text-indigo-600', 'font-medium');
+        allTimeBtn.classList.add('text-gray-400');
+      }
     }
 
     // Update the three ZBB summary numbers at the top of the page.
@@ -504,6 +619,27 @@
         tbbLabel.textContent = 'All money assigned ✓';
         tbbLabel.className   = 'text-xs text-emerald-600 mt-0.5';
       }
+    }
+
+    // Render the filtered Income / Expenses / Net bar below the main summary.
+    function renderFilteredSummary() {
+      const income   = calcFilteredIncome();
+      const expenses = calcFilteredExpenses();
+      const net      = calcFilteredNet();
+
+      const incomeEl   = document.getElementById('summary-income');
+      const expensesEl = document.getElementById('summary-expenses');
+      const netEl      = document.getElementById('summary-net');
+
+      incomeEl.textContent   = '+' + formatMoney(income);
+      expensesEl.textContent = '-' + formatMoney(expenses);
+      netEl.textContent      = (net < 0 ? '-' : '+') + formatMoney(net);
+
+      incomeEl.className   = 'text-lg font-semibold text-emerald-600';
+      expensesEl.className = 'text-lg font-semibold text-gray-800';
+      netEl.className      = net > 0 ? 'text-lg font-semibold text-emerald-600'
+                           : net < 0 ? 'text-lg font-semibold text-rose-500'
+                           :           'text-lg font-semibold text-gray-800';
     }
 
     // Render all envelope cards in the left column.
@@ -569,11 +705,17 @@
             <div class="flex items-center justify-between">
               <div class="text-xs text-gray-400">Spent: ${formatMoney(spent)}</div>
               <div class="flex gap-3">
-                <!-- NEW BUTTON: only shown when TBB > 0; assigns TBB funds to this envelope -->
+                <!-- only shown when TBB > 0; assigns TBB funds to this envelope -->
                 ${tbb > 0 ? `<button
                   class="btn-assign-money text-xs text-emerald-500 hover:text-emerald-700"
                   data-envelope-id="${env.id}">
                   + Add Funds
+                </button>` : ''}
+                <!-- only shown when budget > 0 and remaining > 0; returns funds to TBB -->
+                ${env.monthlyBudget > 0 && remaining > 0 ? `<button
+                  class="btn-remove-money text-xs text-rose-400 hover:text-rose-600"
+                  data-envelope-id="${env.id}">
+                  - Remove Funds
                 </button>` : ''}
                 <button
                   class="btn-move-money text-xs text-indigo-400 hover:text-indigo-600"
@@ -591,15 +733,74 @@
       }).join('');
     }
 
+    // Style the Transactions / Budget Activity toggle buttons to match viewMode.
+    function renderViewToggle() {
+      const onTxn = viewMode === 'transactions';
+      const activeClass   = 'text-xs px-3 py-1.5 border border-indigo-600 bg-indigo-600 text-white';
+      const inactiveClass = 'text-xs px-3 py-1.5 border border-gray-200 bg-white text-gray-500 hover:text-gray-700';
+      document.getElementById('btn-view-transactions').className =
+        (onTxn ? activeClass : inactiveClass) + ' rounded-l';
+      document.getElementById('btn-view-activity').className =
+        (onTxn ? inactiveClass : activeClass) + ' rounded-r';
+      document.getElementById('btn-view-transactions').textContent = 'Transactions';
+      document.getElementById('btn-view-activity').textContent     = 'Budget Activity';
+    }
+
+    // Render the budget activity log in the right column.
+    function renderBudgetLog() {
+      const container = document.getElementById('transaction-list');
+      document.getElementById('transaction-panel-title').textContent = 'Budget Activity';
+
+      let entries = filterByView(state.budgetLog);
+      entries = [...entries].sort((a, b) => b.date.localeCompare(a.date));
+
+      if (entries.length === 0) {
+        const msg = state.allTime
+          ? 'No budget activity yet.'
+          : 'No budget activity for this period.';
+        container.innerHTML = `<p class="text-sm text-gray-400 text-center py-10">${msg}</p>`;
+        return;
+      }
+
+      container.innerHTML = entries.map(entry => {
+        const fromEnv  = state.envelopes.find(e => e.id === entry.fromEnvelopeId);
+        const toEnv    = state.envelopes.find(e => e.id === entry.toEnvelopeId);
+        const fromName = fromEnv ? escapeHtml(fromEnv.name) : '—';
+        const toName   = toEnv   ? escapeHtml(toEnv.name)   : '—';
+
+        let description, dotColor;
+        if (entry.type === 'assign') {
+          description = `Assigned to ${toName}`;
+          dotColor    = '#10b981'; // emerald
+        } else if (entry.type === 'remove') {
+          description = `Removed from ${fromName}`;
+          dotColor    = '#f43f5e'; // rose
+        } else {
+          description = `Moved from ${fromName} to ${toName}`;
+          dotColor    = '#6366f1'; // indigo
+        }
+
+        return `
+          <div class="bg-white rounded shadow-sm p-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${dotColor}"></div>
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-800 truncate">${description}</div>
+                <div class="text-xs text-gray-400">${entry.date}</div>
+              </div>
+            </div>
+            <div class="text-sm font-semibold text-gray-800">${formatMoney(entry.amount)}</div>
+          </div>`;
+      }).join('');
+    }
+
     // Render the transaction list in the right column.
     function renderTransactions() {
       const container = document.getElementById('transaction-list');
       const titleEl   = document.getElementById('transaction-panel-title');
 
-      // Start with all transactions in the currently viewed month
-      let txns = state.transactions.filter(
-        t => getYearMonth(t.date) === state.currentMonth
-      );
+      // Start with all transactions in the active view period
+      let txns = filterByView(state.transactions);
 
       // If an envelope is selected, show only that envelope's expenses.
       // Income is global — it never belongs to a specific envelope.
@@ -617,10 +818,11 @@
       txns.sort((a, b) => b.date.localeCompare(a.date));
 
       if (txns.length === 0) {
+        const emptyMsg = state.selectedEnvelopeId
+          ? 'No transactions for this envelope.'
+          : state.allTime ? 'No transactions yet.' : 'No transactions for this period.';
         container.innerHTML = `
-          <p class="text-sm text-gray-400 text-center py-10">
-            No transactions for this ${state.selectedEnvelopeId ? 'envelope' : 'month'}.
-          </p>`;
+          <p class="text-sm text-gray-400 text-center py-10">${emptyMsg}</p>`;
         return;
       }
 
@@ -658,8 +860,10 @@
     function renderApp() {
       renderMonthLabel();
       renderSummaryBar();
+      renderFilteredSummary();
       renderEnvelopes();
-      renderTransactions();
+      renderViewToggle();
+      viewMode === 'activity' ? renderBudgetLog() : renderTransactions();
     }
 
 
@@ -850,6 +1054,8 @@
         return env;
       });
 
+      state.budgetLog.push({ id: generateId('log'), type: 'move', amount, fromEnvelopeId: fromId, toEnvelopeId: toId, date: getToday() });
+      saveData(KEYS.budgetLog, state.budgetLog);
       saveData(KEYS.envelopes, state.envelopes);
       closeAllModals();
       e.target.reset();
@@ -895,6 +1101,8 @@
           : e
       );
 
+      state.budgetLog.push({ id: generateId('log'), type: 'assign', amount, fromEnvelopeId: null, toEnvelopeId: state.assignTargetEnvelopeId, date: getToday() });
+      saveData(KEYS.budgetLog, state.budgetLog);
       saveData(KEYS.envelopes, state.envelopes);
       // FIX: reset assign target after use
       state.assignTargetEnvelopeId = null;
@@ -903,8 +1111,51 @@
       renderApp();
     }
 
-    // Navigate to the previous or next month
+    // Remove Funds — moves money from an envelope back to TBB.
+    // NOT a transaction — only decreases one envelope's monthlyBudget.
+    // Total Cash is unchanged; TBB increases automatically via calcToBeBudgeted().
+    function handleRemoveMoney(e) {
+      e.preventDefault();
+
+      const rawRemove = document.getElementById('input-remove-amount').value;
+      const amount    = rawRemove ? Math.round(parseFloat(rawRemove) * 100) : 0; // cents
+      const errEl     = document.getElementById('error-remove-amount');
+      errEl.classList.add('hidden');
+
+      const env = state.envelopes.find(e => e.id === state.removeTargetEnvelopeId);
+      if (!env) return;
+
+      const remaining = calcEnvelopeRemaining(env.id);
+
+      if (!amount || amount <= 0) {
+        errEl.textContent = 'Enter an amount greater than $0.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      if (amount > remaining) {
+        errEl.textContent = `Cannot remove more than ${formatMoney(remaining)} (remaining balance).`;
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      state.envelopes = state.envelopes.map(env =>
+        env.id === state.removeTargetEnvelopeId
+          ? { ...env, monthlyBudget: env.monthlyBudget - amount }
+          : env
+      );
+
+      state.budgetLog.push({ id: generateId('log'), type: 'remove', amount, fromEnvelopeId: state.removeTargetEnvelopeId, toEnvelopeId: null, date: getToday() });
+      saveData(KEYS.budgetLog, state.budgetLog);
+      saveData(KEYS.envelopes, state.envelopes);
+      state.removeTargetEnvelopeId = null;
+      closeAllModals();
+      e.target.reset();
+      renderApp();
+    }
+
+    // Navigate to the previous or next month (always exits All Time mode)
     function changeMonth(direction) {
+      state.allTime = false;
       const [year, month] = state.currentMonth.split('-').map(Number);
       const d = new Date(year, month - 1 + direction, 1);
       state.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -917,11 +1168,83 @@
       const payload = JSON.stringify({
         envelopes:    state.envelopes,
         transactions: state.transactions,
+        budgetLog:    state.budgetLog,
         settings:     {},
       }, null, 2);
       const link    = document.createElement('a');
       link.href     = 'data:application/json;charset=utf-8,' + encodeURIComponent(payload);
       link.download = `budget-export-${state.currentMonth}.json`;
+      link.click();
+    }
+
+    // Export filtered transactions + budget log as a single CSV file.
+    // Respects the active view (current month or all time) — same slice the UI is showing.
+    // Does NOT touch JSON export or any state.
+    function handleExportCSV() {
+      // Wrap a cell value in quotes if it contains a comma, quote, or newline
+      function csvCell(val) {
+        const s = String(val == null ? '' : val);
+        return (s.includes(',') || s.includes('"') || s.includes('\n'))
+          ? '"' + s.replace(/"/g, '""') + '"'
+          : s;
+      }
+
+      const filteredTxns = filterByView(state.transactions);
+      const filteredLog  = filterByView(state.budgetLog);
+
+      // Map transactions to common row shape
+      const txnsMapped = filteredTxns.map(t => {
+        const env     = state.envelopes.find(e => e.id === t.envelopeId);
+        const envName = env ? env.name : '';
+        if (t.type === 'income') {
+          return { date: t.date, type: 'Income',  category: 'Income',  from: '-',     to: '-',     description: t.description || '', amount:  t.amount };
+        } else {
+          return { date: t.date, type: 'Expense', category: envName,   from: '-',     to: envName, description: t.description || '', amount: -t.amount };
+        }
+      });
+
+      // Map budget log entries to common row shape
+      const logMapped = filteredLog.map(entry => {
+        const fromEnv  = state.envelopes.find(e => e.id === entry.fromEnvelopeId);
+        const toEnv    = state.envelopes.find(e => e.id === entry.toEnvelopeId);
+        const fromName = fromEnv ? fromEnv.name : '-';
+        const toName   = toEnv   ? toEnv.name   : '-';
+        const typeMap  = { assign: 'Assign', remove: 'Remove', move: 'Move' };
+        const descMap  = { assign: 'Assigned', remove: 'Removed', move: 'Moved' };
+        return {
+          date:        entry.date,
+          type:        typeMap[entry.type],
+          category:    'Budget',
+          from:        entry.type === 'assign' ? '-' : fromName,
+          to:          entry.type === 'remove' ? '-' : toName,
+          description: descMap[entry.type],
+          amount:      entry.amount,
+        };
+      });
+
+      // Combine and sort newest first
+      const combined = [...txnsMapped, ...logMapped];
+      combined.sort((a, b) => b.date.localeCompare(a.date));
+
+      // Build rows: header + data
+      const rows = [['Date', 'Type', 'Category', 'From', 'To', 'Description', 'Amount']];
+      combined.forEach(r => {
+        rows.push([
+          r.date,
+          r.type,
+          csvCell(r.category),
+          csvCell(r.from),
+          csvCell(r.to),
+          csvCell(r.description),
+          (Math.abs(r.amount) / 100).toFixed(2) * (r.amount < 0 ? -1 : 1),
+        ]);
+      });
+
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const label      = state.allTime ? 'all-time' : state.currentMonth;
+      const link       = document.createElement('a');
+      link.href        = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csvContent);
+      link.download    = `budget-${label}.csv`;
       link.click();
     }
 
@@ -956,13 +1279,20 @@
           alert('Some transactions have missing or invalid data. Import cancelled.');
           return;
         }
+        // budgetLog is optional (older exports won't have it), but must be an array if present
+        if (data.budgetLog && !Array.isArray(data.budgetLog)) {
+          alert('Invalid budget log format. Import cancelled.');
+          return;
+        }
 
         if (!confirm('This will replace all current data. Continue?')) return;
 
         state.envelopes    = data.envelopes;
         state.transactions = data.transactions;
-        saveData(KEYS.envelopes, state.envelopes);
+        state.budgetLog    = Array.isArray(data.budgetLog) ? data.budgetLog : [];
+        saveData(KEYS.envelopes,    state.envelopes);
         saveData(KEYS.transactions, state.transactions);
+        saveData(KEYS.budgetLog,    state.budgetLog);
         renderApp();
       };
       reader.readAsText(file);
@@ -1014,13 +1344,29 @@
         openModal('modal-add-income');
       });
 
+      // All Time toggle
+      document.getElementById('btn-all-time').addEventListener('click', () => {
+        state.allTime = true;
+        renderApp();
+      });
+
+      // View toggle: Transactions / Budget Activity
+      document.getElementById('btn-view-transactions').addEventListener('click', () => {
+        viewMode = 'transactions';
+        renderApp();
+      });
+      document.getElementById('btn-view-activity').addEventListener('click', () => {
+        viewMode = 'activity';
+        renderApp();
+      });
+
       // Form submissions
       document.getElementById('form-add-envelope').addEventListener('submit', handleAddEnvelope);
       document.getElementById('form-add-expense').addEventListener('submit', handleAddExpense);
       document.getElementById('form-add-income').addEventListener('submit', handleAddIncome);
       document.getElementById('form-move-money').addEventListener('submit', handleMoveMoney);
-      // EVENT WIRING CHANGES: Assign Money form submit
       document.getElementById('form-assign-money').addEventListener('submit', handleAssignMoney);
+      document.getElementById('form-remove-money').addEventListener('submit', handleRemoveMoney);
 
       // When "From" changes in Move Money, refresh "To" to exclude that envelope
       document.getElementById('input-move-from').addEventListener('change', () => {
@@ -1066,6 +1412,17 @@
           openModal('modal-assign-money');
           // UX: autofocus the amount field so the user can type immediately
           document.getElementById('input-assign-amount').focus();
+          return;
+        }
+
+        const removeBtn = e.target.closest('.btn-remove-money');
+        if (removeBtn) {
+          e.stopPropagation();
+          state.removeTargetEnvelopeId = removeBtn.dataset.envelopeId;
+          document.getElementById('form-remove-money').reset();
+          document.getElementById('error-remove-amount').classList.add('hidden');
+          openModal('modal-remove-money');
+          document.getElementById('input-remove-amount').focus();
           return;
         }
 
@@ -1183,6 +1540,7 @@
 
       // Footer: export / import / reset
       document.getElementById('btn-export').addEventListener('click', handleExport);
+      document.getElementById('btn-export-csv').addEventListener('click', handleExportCSV);
       document.getElementById('input-import').addEventListener('change', handleImport);
       // EVENT WIRING CHANGES: reset button
       document.getElementById('btn-reset').addEventListener('click', handleResetData);
@@ -1204,10 +1562,21 @@
     function init() {
       state.envelopes    = loadData(KEYS.envelopes);
       state.transactions = loadData(KEYS.transactions);
+      state.budgetLog    = loadData(KEYS.budgetLog);
 
       // Always open on the current calendar month
       const now = new Date();
       state.currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      // Migration: assign today's date to any transaction that was saved without one
+      const today = getToday();
+      let migrated = false;
+      state.transactions = state.transactions.map(t => {
+        if (t.date) return t;
+        migrated = true;
+        return { ...t, date: today };
+      });
+      if (migrated) saveData(KEYS.transactions, state.transactions);
 
       wireEvents();
       renderApp();
