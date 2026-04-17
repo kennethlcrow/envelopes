@@ -1,11 +1,13 @@
 # Envelopes
 
-A lightweight, local-first budgeting app built around one idea:
+A lightweight, local-first envelope budgeting app built around one idea:
 
 👉 **Give every dollar a job — and know exactly what happened to it.**
 
+Runs entirely in a single HTML file — no backend, no dependencies.
+
 No accounts. No syncing. No subscriptions.  
-Just a clear, predictable way to manage your money.
+Just a clear, predictable way to plan and track your money.
 
 ---
 
@@ -46,25 +48,23 @@ You’ll probably like this.
 
 Envelope budgeting is a method where every dollar is assigned a purpose.
 
-This app lets you:
+This app separates **planning** from **spending**:
 
-- Create envelopes (categories)
-- Assign income to those envelopes
-- Track spending against them
-- Adjust your plan as life changes
+- You assign money using envelopes (your plan)
+- You record transactions (what actually happened)
 
-Everything runs entirely in your browser.  
-Nothing leaves your device.
+Both stay visible — so you always know what you planned and what actually happened.
 
 ---
 
 ## How it works
 
 1. **Add income**  
-   Record money coming in. This increases your “To Be Budgeted” (TBB).
+   Record money coming in. This increases your “To Be Budgeted” (TBB).  
+   TBB represents money you’ve received but haven’t assigned to a purpose yet.
 
 2. **Assign money to envelopes**  
-   Give every dollar a job using “+ Add Funds”.
+   Give every dollar a job by assigning funds from TBB to envelopes.
 
 3. **Spend from envelopes**  
    Record expenses against a category.
@@ -89,8 +89,10 @@ Nothing leaves your device.
   - Total Cash (all-time reality)
   - Total Assigned (your plan)
   - To Be Budgeted
-- Filtered summary:
-  - Income / Expenses / Net (current month, last month, or all time)
+- Month-based view for:
+  - Envelope spending
+  - Transactions
+- Toggle for all-time view
 
 ### Tracking & history
 
@@ -112,7 +114,23 @@ Nothing leaves your device.
 
 - Drag-and-drop envelope reordering
 - Click-to-filter transactions by envelope
+- Clear overspending indicators (negative balances + visual warning)
 - Simple UI — no setup required
+
+---
+
+## How time works
+
+- Month navigation affects:
+  - Envelope spending
+  - Transaction view
+
+- Top-level numbers are always **all-time**:
+  - Total Cash
+  - Total Assigned
+  - To Be Budgeted
+
+This keeps your plan stable while letting you view spending over time.
 
 ---
 
@@ -129,8 +147,6 @@ You decide:
 - how to adjust when things change
 
 Nothing is hidden. Nothing is inferred.
-
-It’s simple on purpose.
 
 ---
 
@@ -168,7 +184,7 @@ Important:
 
 ## Future improvements
 
-- Overspending indicators
+- Smarter guidance when overspending
 - Per-envelope breakdown views
 - Budget history by month
 - Optional sync (without compromising simplicity)
@@ -182,10 +198,10 @@ This project is being built using a combination of:
 - ChatGPT (architecture, design, reasoning)
 - Claude Code (implementation)
 
-See [AI_COLLABORATION.md](./AI_COLLABORATION.md) for details.
+See `DESIGN.md` for build philosophy and decisions.
 
 ---
 
 ## License
 
-GNU General Public License v3.0
+MIT License
