@@ -57,6 +57,35 @@ Both stay visible — so you always know what you planned and what actually happ
 
 ---
 
+## Quick Start (2 minutes)
+
+If the app looks empty — that’s normal. Start here:
+
+1. **Create your envelopes**  
+   Think of these as categories for your money (e.g., Rent, Food, Gas, Fun).
+
+2. **Add your cash (Income)**  
+   Click **+ Income** and enter how much money you currently have.  
+   This will increase your **To Be Budgeted (TBB)**.
+
+3. **Assign your money (Budgeting)**  
+   TBB = *To Be Budgeted* — money that hasn’t been given a job yet.
+
+   Allocate that money into your envelopes until:
+   👉 **TBB = $0.00**
+
+4. **Start spending**  
+   Click **+ Expense** and choose the envelope the money should come from.
+
+That’s it.
+
+You now have a working zero-based budget:
+- Every dollar has a purpose
+- Every expense is tracked
+- Your plan stays visible
+
+---
+
 ## How it works
 
 1. **Add income**  
