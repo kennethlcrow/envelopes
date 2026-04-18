@@ -2,6 +2,8 @@
 
 > **If the envelope is empty, you’re done spending.**
 
+![App Screenshot](./screenshot.png)
+
 **Try it live →** https://envelopes-app.com
 
 A lightweight, local-first envelope budgeting app built around one idea:
@@ -37,8 +39,6 @@ If the app looks empty — that’s normal. Start here:
    Click **+ Expense** and choose the envelope.
 
 That’s it.
-
-![App Screenshot](./screenshot.png)
 
 ---
 
