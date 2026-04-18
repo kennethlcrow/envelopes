@@ -31,6 +31,11 @@
           <div class="text-xl font-bold text-gray-800 leading-tight">Envelopes</div>
           <div class="text-xs font-normal text-gray-400 mt-0.5">Zero Based Budgeting</div>
         </div>
+        <a href="https://github.com/kennethlcrow/envelopes/blob/main/README.md"
+          target="_blank" rel="noopener noreferrer"
+          class="text-sm text-gray-500 hover:text-gray-800 underline ml-4">
+          How it works ↗
+        </a>
       </div>
       <div class="flex items-center gap-3">
         <div class="flex items-center gap-2">
@@ -48,6 +53,16 @@
       </div>
     </div>
   </header>
+
+
+  <!-- Demo banner — only visible when demo data is active -->
+  <div id="demo-banner" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2">
+    <div class="max-w-5xl mx-auto flex items-center justify-between gap-4">
+      <span class="text-sm text-amber-700">
+        You're viewing demo data. Clear it anytime to start your own budget.
+      </span>
+    </div>
+  </div>
 
 
   <!-- ============================================================
@@ -155,29 +170,35 @@
     FOOTER — export and import buttons
   ============================================================ -->
   <footer class="border-t border-gray-200 px-4 py-4 mt-2">
-    <div class="max-w-5xl mx-auto flex items-center gap-6">
-      <button id="btn-export"
-        class="text-sm text-gray-500 hover:text-gray-800 underline">
-        Export JSON
-      </button>
-      <!-- The label acts as a styled button for the hidden file input -->
-      <label class="text-sm text-gray-500 hover:text-gray-800 underline cursor-pointer">
-        Import JSON
-        <input type="file" id="input-import" accept=".json" class="hidden" />
-      </label>
-      <button id="btn-export-csv"
-        class="text-sm text-gray-500 hover:text-gray-800 underline">
-        Export CSV
-      </button>
-      <!-- NEW: reset button — clears all localStorage and reloads -->
-      <button id="btn-reset"
-        class="text-sm text-gray-500 hover:text-rose-600 underline">
-        Reset Data
-      </button>
-      <a href="https://github.com/kennethlcrow/envelopes/blob/main/README.md" target="_blank" rel="noopener noreferrer"
-        class="text-sm text-gray-500 hover:text-gray-800 underline">
-        How it works ↗
-      </a>
+    <div class="max-w-5xl mx-auto flex items-center justify-between">
+
+      <div class="flex items-center gap-6">
+        <button id="btn-export"
+          class="text-sm text-gray-500 hover:text-gray-800 underline">
+          Export JSON
+        </button>
+        <!-- The label acts as a styled button for the hidden file input -->
+        <label class="text-sm text-gray-500 hover:text-gray-800 underline cursor-pointer">
+          Import JSON
+          <input type="file" id="input-import" accept=".json" class="hidden" />
+        </label>
+        <button id="btn-export-csv"
+          class="text-sm text-gray-500 hover:text-gray-800 underline">
+          Export CSV
+        </button>
+      </div>
+
+      <div class="flex items-center gap-6">
+        <button id="btn-load-demo"
+          class="text-sm text-gray-500 hover:text-indigo-600 underline">
+          Load Demo Data
+        </button>
+        <button id="btn-reset"
+          class="text-sm text-gray-500 hover:text-rose-600 underline">
+          Reset Data
+        </button>
+      </div>
+
     </div>
   </footer>
 
@@ -375,20 +396,32 @@
     // JSON.stringify (array → text) and JSON.parse (text → array).
 
     const KEYS = {
+      appData:      'appData',      // single localStorage key for all app state
       envelopes:    'envelopes',
       transactions: 'transactions',
       budgetLog:    'budgetLog',
+      hasSeenDemo:  'hasSeenDemo',  // persists across resets; prevents demo from re-loading after Reset Data
     };
 
-    // Load a saved array. Returns [] if nothing is stored yet.
-    function loadData(key) {
-      const raw = localStorage.getItem(key);
-      return raw ? JSON.parse(raw) : [];
+    // Load a named array from the single appData object. Returns [] if missing.
+    function loadData(prop) {
+      const raw = localStorage.getItem(KEYS.appData);
+      if (!raw) return [];
+      try {
+        const obj = JSON.parse(raw);
+        return Array.isArray(obj[prop]) ? obj[prop] : [];
+      } catch { return []; }
     }
 
-    // Save an array to localStorage.
-    function saveData(key, data) {
-      localStorage.setItem(key, JSON.stringify(data));
+    // Save a named array into the single appData object (read-modify-write).
+    function saveData(prop, data) {
+      let obj = {};
+      try {
+        const raw = localStorage.getItem(KEYS.appData);
+        if (raw) obj = JSON.parse(raw);
+      } catch {}
+      obj[prop] = data;
+      localStorage.setItem(KEYS.appData, JSON.stringify(obj));
     }
 
     // Make a unique ID string using the current timestamp.
@@ -664,7 +697,7 @@
       if (state.envelopes.length === 0) {
         container.innerHTML = `
           <p class="text-sm text-gray-400 text-center py-10">
-            No envelopes yet.<br/>Create one to start budgeting.
+            No data yet. Create an envelope or load demo data.
           </p>`;
         return;
       }
@@ -869,8 +902,67 @@
       }).join('');
     }
 
+    // === DEMO DATA ===
+
+    function createDemoData() {
+      const now = new Date();
+      const ym  = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const d   = day => `${ym}-${String(day).padStart(2, '0')}`;
+      const ts  = new Date().toISOString();
+
+      const envelopes = [
+        { id: 'demo_env_1', name: 'Rent',           monthlyBudget: 110000, color: '#6366f1', createdAt: ts },
+        { id: 'demo_env_2', name: 'Groceries',      monthlyBudget:  40000, color: '#10b981', createdAt: ts },
+        { id: 'demo_env_3', name: 'Gas',            monthlyBudget:  15000, color: '#f59e0b', createdAt: ts },
+        { id: 'demo_env_4', name: 'Dining Out',     monthlyBudget:  20000, color: '#f43f5e', createdAt: ts },
+        { id: 'demo_env_5', name: 'Emergency Fund', monthlyBudget:  30000, color: '#0ea5e9', createdAt: ts },
+        { id: 'demo_env_6', name: 'Fun Money',      monthlyBudget:  10000, color: '#8b5cf6', createdAt: ts },
+      ];
+
+      const transactions = [
+        { id: 'demo_txn_1', type: 'income',  envelopeId: null,         amount: 250000, description: 'Paycheck',          date: d(1),  createdAt: ts },
+        { id: 'demo_txn_2', type: 'expense', envelopeId: 'demo_env_1', amount: 105000, description: 'Rent',              date: d(1),  createdAt: ts },
+        { id: 'demo_txn_3', type: 'expense', envelopeId: 'demo_env_2', amount:   8743, description: 'Weekly groceries',  date: d(5),  createdAt: ts },
+        { id: 'demo_txn_4', type: 'expense', envelopeId: 'demo_env_3', amount:   4820, description: 'Gas station',       date: d(8),  createdAt: ts },
+        { id: 'demo_txn_5', type: 'expense', envelopeId: 'demo_env_4', amount:   6250, description: 'Dinner out',        date: d(10), createdAt: ts },
+        { id: 'demo_txn_6', type: 'expense', envelopeId: 'demo_env_2', amount:   9317, description: 'Grocery run',       date: d(12), createdAt: ts },
+        { id: 'demo_txn_7', type: 'expense', envelopeId: 'demo_env_4', amount:   2840, description: 'Coffee & lunch',    date: d(14), createdAt: ts },
+        { id: 'demo_txn_8', type: 'expense', envelopeId: 'demo_env_6', amount:   1499, description: 'Streaming service', date: d(3),  createdAt: ts },
+      ];
+
+      const budgetLog = [
+        { id: 'demo_log_1', type: 'assign', amount: 110000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_1', date: d(1) },
+        { id: 'demo_log_2', type: 'assign', amount:  40000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_2', date: d(1) },
+        { id: 'demo_log_3', type: 'assign', amount:  15000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_3', date: d(1) },
+        { id: 'demo_log_4', type: 'assign', amount:  20000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_4', date: d(1) },
+        { id: 'demo_log_5', type: 'assign', amount:  30000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_5', date: d(1) },
+        { id: 'demo_log_6', type: 'assign', amount:  10000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_6', date: d(1) },
+      ];
+
+      return { envelopes, transactions, budgetLog };
+    }
+
+    function loadDemoData() {
+      const demo = createDemoData();
+      state.envelopes    = demo.envelopes;
+      state.transactions = demo.transactions;
+      state.budgetLog    = demo.budgetLog;
+      saveData(KEYS.envelopes,    state.envelopes);
+      saveData(KEYS.transactions, state.transactions);
+      saveData(KEYS.budgetLog,    state.budgetLog);
+      renderApp();
+    }
+
+    // Demo mode detected by the presence of demo-prefixed envelope IDs — no separate flag needed
+    function renderDemoBanner() {
+      const isDemo = state.envelopes.some(e => e.id.startsWith('demo_'));
+      document.getElementById('demo-banner').classList.toggle('hidden', !isDemo);
+    }
+
+
     // Master render — call this after any state change.
     function renderApp() {
+      renderDemoBanner();
       renderMonthLabel();
       renderSummaryBar();
       renderFilteredSummary();
@@ -1559,19 +1651,23 @@
         if (deleteBtn) handleDeleteTransaction(deleteBtn.dataset.transactionId);
       });
 
-      // Footer: export / import / reset
+      // Footer: export / import / reset / demo
       document.getElementById('btn-export').addEventListener('click', handleExport);
       document.getElementById('btn-export-csv').addEventListener('click', handleExportCSV);
       document.getElementById('input-import').addEventListener('change', handleImport);
-      // EVENT WIRING CHANGES: reset button
       document.getElementById('btn-reset').addEventListener('click', handleResetData);
+      document.getElementById('btn-load-demo').addEventListener('click', () => {
+        if (!confirm('Load demo data? This will replace all current data.')) return;
+        loadDemoData();
+      });
     }
 
 
-    // NEW: reset handler — wipes all localStorage and reloads the page
+    // Reset handler — clears all app data, then sets hasSeenDemo so demo never auto-reloads
     function handleResetData() {
       if (!confirm('This will delete ALL data. Continue?')) return;
-      localStorage.clear();
+      localStorage.removeItem(KEYS.appData);
+      localStorage.setItem(KEYS.hasSeenDemo, 'true');
       location.reload();
     }
 
@@ -1581,9 +1677,25 @@
     // Runs once when the page finishes loading.
 
     function init() {
-      state.envelopes    = loadData(KEYS.envelopes);
-      state.transactions = loadData(KEYS.transactions);
-      state.budgetLog    = loadData(KEYS.budgetLog);
+      const hasData     = localStorage.getItem(KEYS.appData) !== null;
+      const hasSeenDemo = localStorage.getItem(KEYS.hasSeenDemo) !== null;
+
+      if (!hasData && !hasSeenDemo) {
+        // True first visit: auto-load demo and mark it as seen
+        const demo = createDemoData();
+        state.envelopes    = demo.envelopes;
+        state.transactions = demo.transactions;
+        state.budgetLog    = demo.budgetLog;
+        saveData(KEYS.envelopes,    state.envelopes);
+        saveData(KEYS.transactions, state.transactions);
+        saveData(KEYS.budgetLog,    state.budgetLog);
+        localStorage.setItem(KEYS.hasSeenDemo, 'true');
+      } else {
+        // Returning visit or post-reset: load whatever exists (may be empty)
+        state.envelopes    = loadData(KEYS.envelopes);
+        state.transactions = loadData(KEYS.transactions);
+        state.budgetLog    = loadData(KEYS.budgetLog);
+      }
 
       // Always open on the current calendar month
       const now = new Date();

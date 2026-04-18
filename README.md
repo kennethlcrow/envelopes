@@ -1,5 +1,9 @@
 # Envelopes
 
+> **If the envelope is empty, you’re done spending.**
+
+**Try it live →** https://envelopes-app.com
+
 A lightweight, local-first envelope budgeting app built around one idea:
 
 👉 **Give every dollar a job — and know exactly what happened to it.**
@@ -8,6 +12,33 @@ Runs entirely in a single HTML file — no backend, no dependencies.
 
 No accounts. No syncing. No subscriptions.  
 Just a clear, predictable way to plan and track your money.
+
+---
+
+## Quick Start (30–60 seconds)
+
+If the app looks empty — that’s normal. Start here:
+
+1. **(Optional) Load demo data**  
+   Click **Load Demo Data** to see how everything works.
+
+2. **Add your cash (Income)**  
+   Click **+ Income** and enter how much money you currently have.  
+   This increases your **To Be Budgeted (TBB)**.
+
+3. **Create your envelopes**  
+   These are your categories (Rent, Food, Gas, etc.)
+
+4. **Assign your money**  
+   Allocate your TBB into envelopes until:
+   👉 **TBB = $0.00**
+
+5. **Start spending**  
+   Click **+ Expense** and choose the envelope.
+
+That’s it.
+
+![App Screenshot](./screenshot.png)
 
 ---
 
@@ -54,35 +85,6 @@ This app separates **planning** from **spending**:
 - You record transactions (what actually happened)
 
 Both stay visible — so you always know what you planned and what actually happened.
-
----
-
-## Quick Start (2 minutes)
-
-If the app looks empty — that’s normal. Start here:
-
-1. **Create your envelopes**  
-   Think of these as categories for your money (e.g., Rent, Food, Gas, Fun).
-
-2. **Add your cash (Income)**  
-   Click **+ Income** and enter how much money you currently have.  
-   This will increase your **To Be Budgeted (TBB)**.
-
-3. **Assign your money (Budgeting)**  
-   TBB = *To Be Budgeted* — money that hasn’t been given a job yet.
-
-   Allocate that money into your envelopes until:
-   👉 **TBB = $0.00**
-
-4. **Start spending**  
-   Click **+ Expense** and choose the envelope the money should come from.
-
-That’s it.
-
-You now have a working zero-based budget:
-- Every dollar has a purpose
-- Every expense is tracked
-- Your plan stays visible
 
 ---
 
@@ -213,6 +215,7 @@ Important:
 
 ## Future improvements
 
+- Better mobile layout
 - Smarter guidance when overspending
 - Per-envelope breakdown views
 - Budget history by month
