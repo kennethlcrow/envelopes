@@ -153,13 +153,33 @@ Both stay visible — so you always know what you planned and what actually happ
   - Envelopes + balances
 - Export to CSV (filtered data for analysis)
 
-### Usability
+---
 
-- Drag-and-drop envelope reordering
-- Click-to-filter transactions by envelope
-- Inline renaming for envelopes (except Savings)
-- Clear overspending indicators (negative balances + visual warning)
-- Simple UI — no setup required
+## Reducing Transaction Clutter (Advanced)
+
+Over time, your transaction history can get large and noisy.
+
+If you prefer a clean slate while keeping your current financial state:
+
+### Option: Reset history but keep balances
+
+1. **Export your data (JSON)**
+2. Re-import using:
+   - **Envelopes + balances only**
+
+This will:
+
+- Keep all envelope names
+- Keep current balances
+- Remove all historical transactions
+
+👉 Think of it as a “soft reset” of your history.
+
+This is useful if:
+
+- You don’t care about old transactions
+- You want a cleaner interface
+- You’re starting a new phase (new job, move, retirement, etc.)
 
 ---
 
