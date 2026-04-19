@@ -624,17 +624,12 @@
       const nextBtn = document.getElementById('btn-next-month');
       const allTimeBtn = document.getElementById('btn-all-time');
 
+      label.textContent = formatMonthLabel(state.currentMonth);
       if (state.allTime) {
-        label.textContent = 'All Time';
-        prevBtn.classList.add('opacity-30', 'pointer-events-none');
-        nextBtn.classList.add('opacity-30', 'pointer-events-none');
-        allTimeBtn.classList.add('text-indigo-600', 'font-medium', 'pointer-events-none');
+        allTimeBtn.classList.add('text-indigo-600', 'font-medium');
         allTimeBtn.classList.remove('text-gray-400');
       } else {
-        label.textContent = formatMonthLabel(state.currentMonth);
-        prevBtn.classList.remove('opacity-30', 'pointer-events-none');
-        nextBtn.classList.remove('opacity-30', 'pointer-events-none');
-        allTimeBtn.classList.remove('text-indigo-600', 'font-medium', 'pointer-events-none');
+        allTimeBtn.classList.remove('text-indigo-600', 'font-medium');
         allTimeBtn.classList.add('text-gray-400');
       }
     }
@@ -1463,7 +1458,7 @@
 
       // All Time toggle
       document.getElementById('btn-all-time').addEventListener('click', () => {
-        state.allTime = true;
+        state.allTime = !state.allTime;
         renderApp();
       });
 
