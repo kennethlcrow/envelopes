@@ -7,6 +7,8 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <!-- Tailwind CSS loaded from CDN — no install or build step needed -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js — used only for the Savings envelope balance graph -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-50 min-h-screen font-sans text-gray-900">
 
@@ -160,6 +162,19 @@
         <button id="btn-view-transactions" type="button"></button>
         <button id="btn-view-activity"     type="button"></button>
       </div>
+      <!-- Savings balance graph — only rendered when Savings envelope is selected -->
+      <div id="savings-chart-container" class="hidden mb-4 bg-white rounded shadow-sm p-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs text-gray-400 uppercase tracking-wide">Balance Over Time</div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-500">Goal:</span>
+            <input id="savings-goal-input" type="number" step="1" min="0"
+              placeholder="$"
+              class="text-xs border rounded px-2 py-1 w-24" />
+          </div>
+        </div>
+        <canvas id="savings-chart"></canvas>
+      </div>
       <!-- Transaction / budget-log rows are rendered here -->
       <div id="transaction-list" class="space-y-2"></div>
     </section>
@@ -171,36 +186,40 @@
     FOOTER — export and import buttons
   ============================================================ -->
   <footer class="border-t border-gray-200 px-4 py-4 mt-2">
-    <div class="max-w-5xl mx-auto text-sm text-gray-400 mb-2">
+    <div class="max-w-5xl mx-auto text-sm text-gray-400 mb-3">
       Your data is stored locally in your browser. Use "Export JSON" to back it up.
     </div>
-    <div class="max-w-5xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-3">
 
-      <div class="flex flex-wrap items-center gap-4 md:gap-6">
-        <button id="btn-export"
-          class="text-sm text-gray-500 hover:text-gray-800 underline py-1">
-          Export JSON
-        </button>
-        <!-- The label acts as a styled button for the hidden file input -->
-        <label class="text-sm text-gray-500 hover:text-gray-800 underline cursor-pointer py-1">
-          Import JSON
-          <input type="file" id="input-import" accept=".json" class="hidden" />
-        </label>
-        <button id="btn-export-csv"
-          class="text-sm text-gray-500 hover:text-gray-800 underline py-1">
-          Export CSV
-        </button>
+    <!-- Single row: all links left-right, import controls collapse below -->
+    <div class="max-w-5xl mx-auto flex justify-between items-start text-sm">
+
+      <!-- LEFT -->
+      <div class="flex gap-6 items-start">
+        <button id="btn-export" class="text-gray-500 hover:text-gray-800 underline">Export JSON</button>
+        <button id="btn-export-csv" class="text-gray-500 hover:text-gray-800 underline">Export CSV</button>
+
+        <!-- Import JSON toggles its controls panel -->
+        <div class="flex flex-col items-start">
+          <button id="btn-import-toggle" class="text-gray-500 hover:text-gray-800 underline">Import JSON</button>
+          <div id="import-options" class="hidden mt-2 flex flex-col gap-1 max-w-xs">
+            <select id="import-mode" class="text-xs border rounded px-2 py-1">
+              <option value="full">Import All Data</option>
+              <option value="envelopes">Envelopes Only</option>
+              <option value="envelopes_balances">Envelopes + Balances</option>
+            </select>
+            <label class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded cursor-pointer text-center block">
+              Choose File
+              <input type="file" id="input-import" accept=".json" class="hidden" />
+            </label>
+            <div id="import-mode-hint" class="text-xs text-gray-400"></div>
+          </div>
+        </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-4 md:gap-6">
-        <button id="btn-load-demo"
-          class="text-sm text-gray-500 hover:text-indigo-600 underline py-1">
-          Load Demo Data
-        </button>
-        <button id="btn-reset"
-          class="text-sm text-gray-500 hover:text-rose-600 underline py-1">
-          Reset Data
-        </button>
+      <!-- RIGHT -->
+      <div class="flex gap-6">
+        <button id="btn-load-demo" class="text-gray-500 hover:text-indigo-600 underline">Load Demo Data</button>
+        <button id="btn-reset" class="text-gray-500 hover:text-rose-600 underline">Reset Data</button>
       </div>
 
     </div>
@@ -404,8 +423,11 @@
       envelopes:    'envelopes',
       transactions: 'transactions',
       budgetLog:    'budgetLog',
+      savingsGoal:  'savingsGoal',  // cents; stored inside appData like any other prop
       hasSeenDemo:  'hasSeenDemo',  // persists across resets; prevents demo from re-loading after Reset Data
     };
+
+    const SAVINGS_NAME = 'Savings';
 
     // Load a named array from the single appData object. Returns [] if missing.
     function loadData(prop) {
@@ -417,13 +439,24 @@
       } catch { return []; }
     }
 
-    // Save a named array into the single appData object (read-modify-write).
+    // Load a named scalar (number, string, etc.) from appData. Returns fallback if missing.
+    function loadValue(prop, fallback) {
+      const raw = localStorage.getItem(KEYS.appData);
+      if (!raw) return fallback;
+      try {
+        const obj = JSON.parse(raw);
+        return obj[prop] !== undefined ? obj[prop] : fallback;
+      } catch { return fallback; }
+    }
+
+    // Save a named value into the single appData object (read-modify-write).
+    // Always reads existing data first so no other key is overwritten.
     function saveData(prop, data) {
       let obj = {};
-      try {
-        const raw = localStorage.getItem(KEYS.appData);
-        if (raw) obj = JSON.parse(raw);
-      } catch {}
+      const raw = localStorage.getItem(KEYS.appData);
+      if (raw) {
+        try { obj = JSON.parse(raw) || {}; } catch { obj = {}; }
+      }
       obj[prop] = data;
       localStorage.setItem(KEYS.appData, JSON.stringify(obj));
     }
@@ -448,6 +481,7 @@
       removeTargetEnvelopeId: null, // tracks which envelope the Remove Funds modal targets
       budgetLog:              [],   // log of assign/remove/move actions (display only, never used in math)
       allTime:                false, // true = show all dates; false = show state.currentMonth only
+      savingsGoal:            0,    // cents; 0 = no goal set
     };
 
     // Which panel is shown in the right column: 'transactions' or 'activity'
@@ -723,55 +757,71 @@
             style="border-left: 4px solid ${env.color}"
             data-envelope-id="${env.id}"
           >
-            <!-- Top row: name + remaining balance -->
-            <div class="flex items-start justify-between mb-2">
-              <div>
-                <div class="text-sm font-semibold text-gray-800">${escapeHtml(env.name)}</div>
-                <div class="text-xs text-gray-400">
-                  ${env.monthlyBudget === 0 ? 'No funds assigned' : 'Assigned: ' + formatMoney(env.monthlyBudget)}
-                </div>
+            <div class="flex items-start gap-2">
+              <!-- Control column: pin for Savings, reorder arrows for others -->
+              <div class="w-5 flex flex-col items-center text-gray-400 text-xs pt-1 leading-none select-none pointer-events-none">
+                ${env.isPinned === true
+                  ? '<span>📌</span>'
+                  : '<span class="opacity-50 cursor-default">▲</span><span class="opacity-50 cursor-default">▼</span>'}
               </div>
-              <div class="text-right">
-                <div class="text-sm font-bold ${isOver ? 'text-rose-500' : 'text-gray-800'}">
-                  ${isOver ? '-' : ''}${formatMoney(remaining)}
+
+              <!-- Envelope content -->
+              <div class="flex-1">
+                <!-- Top row: name + remaining balance -->
+                <div class="flex items-start justify-between mb-2">
+                  <div>
+                    <div class="text-sm font-semibold text-gray-800">
+                      ${env.isPinned === true
+                        ? escapeHtml(env.name)
+                        : `<span class="envelope-name cursor-pointer hover:text-indigo-600" data-envelope-id="${env.id}" title="Click to rename">${escapeHtml(env.name)}</span>`}
+                    </div>
+                    <div class="text-xs text-gray-400">
+                      ${env.monthlyBudget === 0 ? 'No funds assigned' : 'Assigned: ' + formatMoney(env.monthlyBudget)}
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-sm font-bold ${isOver ? 'text-rose-500' : 'text-gray-800'}">
+                      ${isOver ? '-' : ''}${formatMoney(remaining)}
+                    </div>
+                    <div class="text-xs text-gray-400">${remaining > 0 ? 'remaining' : remaining === 0 ? 'no funds' : 'over budget'}</div>
+                  </div>
                 </div>
-                <div class="text-xs text-gray-400">${remaining > 0 ? 'remaining' : remaining === 0 ? 'no funds' : 'over budget'}</div>
-              </div>
-            </div>
 
-            <!-- Spending progress bar -->
-            <div class="w-full bg-gray-100 rounded-full h-1.5 mb-2">
-              <div class="h-1.5 rounded-full ${barColor}" style="width:${pct}%"></div>
-            </div>
+                <!-- Spending progress bar -->
+                <div class="w-full bg-gray-100 rounded-full h-1.5 mb-2">
+                  <div class="h-1.5 rounded-full ${barColor}" style="width:${pct}%"></div>
+                </div>
 
-            ${isOver ? '<div class="text-xs text-rose-400 mb-2">Over budget this month</div>' : ''}
+                ${isOver ? '<div class="text-xs text-rose-400 mb-2">Over budget this month</div>' : ''}
 
-            <!-- Bottom row: spent amount + action buttons -->
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-              <div class="text-xs text-gray-400">Spent: ${formatMoney(spent)}</div>
-              <div class="flex flex-wrap gap-2 md:flex-nowrap md:gap-3">
-                <!-- only shown when TBB > 0; assigns TBB funds to this envelope -->
-                ${tbb > 0 ? `<button
-                  class="btn-assign-money text-xs text-emerald-500 hover:text-emerald-700 py-1.5 px-2"
-                  data-envelope-id="${env.id}">
-                  + Add Funds
-                </button>` : ''}
-                <!-- only shown when budget > 0; returns funds to TBB -->
-                ${env.monthlyBudget > 0 ? `<button
-                  class="btn-remove-money text-xs text-rose-400 hover:text-rose-600 py-1.5 px-2"
-                  data-envelope-id="${env.id}">
-                  - Remove Funds
-                </button>` : ''}
-                <button
-                  class="btn-move-money text-xs text-indigo-400 hover:text-indigo-600 py-1.5 px-2"
-                  data-envelope-id="${env.id}">
-                  ⇄ Move
-                </button>
-                <button
-                  class="btn-delete-envelope text-xs text-gray-300 hover:text-rose-500 py-1.5 px-2"
-                  data-envelope-id="${env.id}">
-                  Delete
-                </button>
+                <!-- Bottom row: spent amount + action buttons -->
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  <div class="text-xs text-gray-400">Spent: ${formatMoney(spent)}</div>
+                  <div class="flex flex-wrap gap-2 md:flex-nowrap md:gap-3">
+                    <!-- only shown when TBB > 0; assigns TBB funds to this envelope -->
+                    ${tbb > 0 ? `<button
+                      class="btn-assign-money text-xs text-emerald-500 hover:text-emerald-700 py-1.5 px-2"
+                      data-envelope-id="${env.id}">
+                      + Add Funds
+                    </button>` : ''}
+                    <!-- only shown when budget > 0; returns funds to TBB -->
+                    ${env.monthlyBudget > 0 ? `<button
+                      class="btn-remove-money text-xs text-rose-400 hover:text-rose-600 py-1.5 px-2"
+                      data-envelope-id="${env.id}">
+                      - Remove Funds
+                    </button>` : ''}
+                    <button
+                      class="btn-move-money text-xs text-indigo-400 hover:text-indigo-600 py-1.5 px-2"
+                      data-envelope-id="${env.id}">
+                      ⇄ Move
+                    </button>
+                    <button
+                      class="btn-delete-envelope text-xs text-gray-300 hover:text-rose-500 py-1.5 px-2"
+                      data-envelope-id="${env.id}">
+                      Delete
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>`;
@@ -793,6 +843,7 @@
 
     // Render the budget activity log in the right column.
     function renderBudgetLog() {
+      destroySavingsChart(); // chart only belongs in the Transactions view
       const container = document.getElementById('transaction-list');
       document.getElementById('transaction-panel-title').textContent = 'Budget Activity';
 
@@ -843,6 +894,14 @@
     function renderTransactions() {
       const container = document.getElementById('transaction-list');
       const titleEl   = document.getElementById('transaction-panel-title');
+
+      // Show Savings graph when the Savings envelope is selected; hide it otherwise
+      const selectedEnv = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      if (selectedEnv && selectedEnv.isPinned === true) {
+        renderSavingsChart(state.selectedEnvelopeId);
+      } else {
+        destroySavingsChart();
+      }
 
       // Start with all transactions in the active view period
       let txns = filterByView(state.transactions);
@@ -901,6 +960,24 @@
       }).join('');
     }
 
+    // === DEFAULT SAVINGS ENVELOPE ===
+    // Returns a fresh Savings envelope object using the standard envelope schema.
+    // Treated as a normal envelope — no special logic flags attached.
+    function createSavingsEnvelope() {
+      return {
+        id:            generateId('env'),
+        name:          'Savings',
+        monthlyBudget: 0,
+        color:         '#14b8a6', // teal
+        isPinned:      true,
+        createdAt:     new Date().toISOString(),
+      };
+    }
+
+    // Persistent Chart.js instance — destroyed before each re-render to avoid memory leaks.
+    let savingsChart = null;
+
+
     // === DEMO DATA ===
 
     function createDemoData() {
@@ -916,6 +993,7 @@
         { id: 'demo_env_4', name: 'Dining Out',     monthlyBudget:  20000, color: '#f43f5e', createdAt: ts },
         { id: 'demo_env_5', name: 'Emergency Fund', monthlyBudget:  30000, color: '#0ea5e9', createdAt: ts },
         { id: 'demo_env_6', name: 'Fun Money',      monthlyBudget:  10000, color: '#8b5cf6', createdAt: ts },
+        { id: 'demo_env_7', name: 'Savings',        monthlyBudget:  25000, color: '#14b8a6', isPinned: true, createdAt: ts },
       ];
 
       const transactions = [
@@ -936,19 +1014,31 @@
         { id: 'demo_log_4', type: 'assign', amount:  20000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_4', date: d(1) },
         { id: 'demo_log_5', type: 'assign', amount:  30000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_5', date: d(1) },
         { id: 'demo_log_6', type: 'assign', amount:  10000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_6', date: d(1) },
+        // Two Savings assigns on different days so the balance graph has multiple points
+        { id: 'demo_log_7', type: 'assign', amount:  15000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_7', date: d(1) },
+        { id: 'demo_log_8', type: 'assign', amount:  10000, fromEnvelopeId: null, toEnvelopeId: 'demo_env_7', date: d(8) },
       ];
 
       return { envelopes, transactions, budgetLog };
     }
 
+    function sortSavingsFirst(envelopes) {
+      const copy = [...envelopes];
+      const idx = copy.findIndex(e => e.isPinned === true);
+      if (idx > 0) copy.unshift(copy.splice(idx, 1)[0]);
+      return copy;
+    }
+
     function loadDemoData() {
       const demo = createDemoData();
-      state.envelopes    = demo.envelopes;
+      state.envelopes    = sortSavingsFirst(demo.envelopes);
       state.transactions = demo.transactions;
       state.budgetLog    = demo.budgetLog;
+      state.savingsGoal = 0;
       saveData(KEYS.envelopes,    state.envelopes);
       saveData(KEYS.transactions, state.transactions);
       saveData(KEYS.budgetLog,    state.budgetLog);
+      saveData(KEYS.savingsGoal,  state.savingsGoal);
       renderApp();
     }
 
@@ -956,6 +1046,134 @@
     function renderDemoBanner() {
       const isDemo = state.envelopes.some(e => e.id.startsWith('demo_'));
       document.getElementById('demo-banner').classList.toggle('hidden', !isDemo);
+    }
+
+
+    // === SAVINGS GRAPH ===
+
+    // Build time-series data for the Savings envelope balance chart.
+    // Sources: budgetLog (assign/remove/move) and expense transactions for this envelope.
+    // Month view → one point per day. All Time view → one point per month.
+    // Current day/month is always injected so the graph shows a live end-point.
+    function buildSavingsChartData(envelopeId) {
+      // Step 1: collect all raw deltas keyed by "YYYY-MM-DD"
+      const dailyDeltas = {};
+
+      state.budgetLog.forEach(entry => {
+        if (entry.toEnvelopeId === envelopeId)
+          dailyDeltas[entry.date] = (dailyDeltas[entry.date] || 0) + entry.amount;
+        if (entry.fromEnvelopeId === envelopeId)
+          dailyDeltas[entry.date] = (dailyDeltas[entry.date] || 0) - entry.amount;
+      });
+
+      state.transactions
+        .filter(t => t.type === 'expense' && t.envelopeId === envelopeId)
+        .forEach(t => {
+          dailyDeltas[t.date] = (dailyDeltas[t.date] || 0) - t.amount;
+        });
+
+      // Step 2: always include today so the chart has a live end-point even with no recent activity
+      const today = getToday();
+      if (dailyDeltas[today] === undefined) dailyDeltas[today] = 0;
+
+      const dates = Object.keys(dailyDeltas).sort();
+      if (dates.length === 0) return null;
+
+      if (!state.allTime) {
+        // Daily mode: one data point per day, sorted ascending
+        const labels = Object.keys(dailyDeltas).sort();
+        let balance = 0;
+        const data = labels.map(day => {
+          balance += dailyDeltas[day];
+          return +(balance / 100).toFixed(2);
+        });
+        return { labels, data };
+      } else {
+        // Monthly mode: collapse daily deltas into YYYY-MM buckets
+        const monthlyDeltas = {};
+        Object.entries(dailyDeltas).forEach(([day, delta]) => {
+          const month = day.slice(0, 7);
+          monthlyDeltas[month] = (monthlyDeltas[month] || 0) + delta;
+        });
+
+        // Ensure current month exists as a live end-point
+        const currentMonth = today.slice(0, 7);
+        if (monthlyDeltas[currentMonth] === undefined) monthlyDeltas[currentMonth] = 0;
+
+        const labels = Object.keys(monthlyDeltas).sort();
+        let balance = 0;
+        const data = labels.map(month => {
+          balance += monthlyDeltas[month];
+          return +(balance / 100).toFixed(2);
+        });
+        return { labels, data };
+      }
+    }
+
+    function renderSavingsChart(envelopeId) {
+      const container = document.getElementById('savings-chart-container');
+      const canvas    = document.getElementById('savings-chart');
+
+      // Sync goal input with current state (whole dollars only)
+      const goalInput = document.getElementById('savings-goal-input');
+      goalInput.value = state.savingsGoal ? (state.savingsGoal / 100) : '';
+
+      if (savingsChart) { savingsChart.destroy(); savingsChart = null; }
+
+      const chartData = buildSavingsChartData(envelopeId);
+      if (!chartData) {
+        // Keep container visible but clear the canvas — no data yet
+        container.classList.remove('hidden');
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      container.classList.remove('hidden');
+
+      const dataMax   = Math.max(...chartData.data);
+      const goalValue = state.savingsGoal / 100;
+      const baseMax   = Math.max(dataMax, goalValue);
+      const yMax      = baseMax > 0 ? baseMax * 1.25 : 100;
+
+      savingsChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: chartData.labels,
+          datasets: [
+            {
+              data:             chartData.data,
+              borderColor:      '#14b8a6',
+              backgroundColor:  'rgba(20, 184, 166, 0.08)',
+              fill:             true,
+              tension:          0.3,
+              pointRadius:      4,
+              pointHoverRadius: 5,
+            },
+            ...(state.savingsGoal > 0 ? [{
+              data:        chartData.data.map(() => state.savingsGoal / 100),
+              borderColor: '#22c55e',
+              borderWidth: 2,
+              borderDash:  [6, 6],
+              pointRadius: 0,
+              fill:        false,
+            }] : []),
+          ],
+        },
+        options: {
+          animation:  false,
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { font: { size: 11 }, maxTicksLimit: 8 } },
+            y: { beginAtZero: true, suggestedMax: yMax, ticks: { font: { size: 11 }, callback: v => '$' + v.toFixed(2) } },
+          },
+        },
+      });
+    }
+
+    function destroySavingsChart() {
+      if (savingsChart) { savingsChart.destroy(); savingsChart = null; }
+      document.getElementById('savings-chart-container').classList.add('hidden');
     }
 
 
@@ -1005,7 +1223,12 @@
         createdAt:     new Date().toISOString(),
       };
 
-      state.envelopes.push(newEnvelope);
+      const savingsIdx = state.envelopes.findIndex(e => e.isPinned === true);
+      if (savingsIdx === -1) {
+        state.envelopes.unshift(newEnvelope);
+      } else {
+        state.envelopes.splice(savingsIdx + 1, 0, newEnvelope);
+      }
       saveData(KEYS.envelopes, state.envelopes);
       closeAllModals();
       e.target.reset();
@@ -1016,6 +1239,10 @@
     function handleDeleteEnvelope(envelopeId) {
       const env = state.envelopes.find(e => e.id === envelopeId);
       if (!env) return;
+      if (env.isPinned === true) {
+        alert('Savings cannot be deleted.');
+        return;
+      }
 
       const txnCount = state.transactions.filter(t => t.envelopeId === envelopeId).length;
       const msg = txnCount > 0
@@ -1036,6 +1263,24 @@
 
       if (state.selectedEnvelopeId === envelopeId) state.selectedEnvelopeId = null;
 
+      renderApp();
+    }
+
+    function renameEnvelope(envelopeId, newName) {
+      const env = state.envelopes.find(e => e.id === envelopeId);
+      if (!env) return;
+      if (env.isPinned === true) {
+        alert('Savings cannot be renamed.');
+        return;
+      }
+      const name = newName.trim();
+      if (!name) return;
+      if (state.envelopes.some(e => e.id !== envelopeId && e.name.toLowerCase() === name.toLowerCase())) {
+        alert('Envelope name already exists.');
+        return;
+      }
+      env.name = name;
+      saveData(KEYS.envelopes, state.envelopes);
       renderApp();
     }
 
@@ -1233,15 +1478,13 @@
       const env = state.envelopes.find(e => e.id === state.removeTargetEnvelopeId);
       if (!env) return;
 
-      const remaining = calcEnvelopeRemaining(env.id);
-
       if (!amount || amount <= 0) {
         errEl.textContent = 'Enter an amount greater than $0.';
         errEl.classList.remove('hidden');
         return;
       }
-      if (amount > remaining) {
-        errEl.textContent = `Cannot remove more than ${formatMoney(remaining)} (remaining balance).`;
+      if (amount > env.monthlyBudget) {
+        errEl.textContent = `Cannot remove more than ${formatMoney(env.monthlyBudget)} (assigned amount).`;
         errEl.classList.remove('hidden');
         return;
       }
@@ -1277,6 +1520,7 @@
         envelopes:    state.envelopes,
         transactions: state.transactions,
         budgetLog:    state.budgetLog,
+        savingsGoal:  state.savingsGoal,
         settings:     {},
       }, null, 2);
       const link    = document.createElement('a');
@@ -1356,7 +1600,10 @@
       link.click();
     }
 
-    // Load data from a JSON file and replace everything in localStorage.
+    // Load data from a JSON file. Behaviour depends on the selected import mode:
+    //   full              — replaces all data (envelopes, transactions, budgetLog)
+    //   envelopes         — imports envelope names only; resets all balances and activity
+    //   envelopes_balances — imports envelopes with budgets; resets transactions and budgetLog
     function handleImport(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -1371,40 +1618,95 @@
           return;
         }
 
-        // Validate shape before touching any saved data
-        if (!Array.isArray(data.envelopes) || !Array.isArray(data.transactions)) {
-          alert('File is missing envelopes or transactions. Import cancelled.');
+        if (!data || !Array.isArray(data.envelopes)) {
+          alert('Invalid import file. Import cancelled.');
           return;
         }
-        // Each envelope must have an id
         if (!data.envelopes.every(e => e.id)) {
           alert('Some envelopes are missing an id. Import cancelled.');
           return;
         }
-        // Each transaction must have an id and a valid type
-        const validTypes = new Set(['income', 'expense']);
-        if (!data.transactions.every(t => t.id && validTypes.has(t.type))) {
-          alert('Some transactions have missing or invalid data. Import cancelled.');
-          return;
-        }
-        // budgetLog is optional (older exports won't have it), but must be an array if present
-        if (data.budgetLog && !Array.isArray(data.budgetLog)) {
-          alert('Invalid budget log format. Import cancelled.');
-          return;
-        }
-        if (data.budgetLog && !data.budgetLog.every(e => e.date)) {
-          alert('Some budget log entries are missing dates. Import cancelled.');
-          return;
+
+        const importMode = document.getElementById('import-mode').value;
+
+        // Full import requires valid transactions array
+        if (importMode === 'full') {
+          if (!Array.isArray(data.transactions)) {
+            alert('File is missing transactions. Import cancelled.');
+            return;
+          }
+          const validTypes = new Set(['income', 'expense']);
+          if (!data.transactions.every(t => t.id && validTypes.has(t.type))) {
+            alert('Some transactions have missing or invalid data. Import cancelled.');
+            return;
+          }
+          if (data.budgetLog && !Array.isArray(data.budgetLog)) {
+            alert('Invalid budget log format. Import cancelled.');
+            return;
+          }
+          if (data.budgetLog && !data.budgetLog.every(e => e.date)) {
+            alert('Some budget log entries are missing dates. Import cancelled.');
+            return;
+          }
         }
 
-        if (!confirm('This will replace all current data. Continue?')) return;
+        if (!confirm('This will replace current data. Continue?')) return;
 
-        state.envelopes    = data.envelopes;
-        state.transactions = data.transactions;
-        state.budgetLog    = Array.isArray(data.budgetLog) ? data.budgetLog : [];
+        if (importMode === 'full') {
+          state.envelopes    = data.envelopes;
+          state.transactions = Array.isArray(data.transactions) ? data.transactions : [];
+          state.budgetLog    = Array.isArray(data.budgetLog)    ? data.budgetLog    : [];
+          state.savingsGoal  = typeof data.savingsGoal === 'number' ? data.savingsGoal : 0;
+        } else if (importMode === 'envelopes') {
+          // Names only — strip all monetary state
+          state.envelopes    = data.envelopes.map(e => ({ ...e, monthlyBudget: 0 }));
+          state.transactions = [];
+          state.budgetLog    = [];
+        } else if (importMode === 'envelopes_balances') {
+          // Keep envelopes with their assigned budgets; clear all activity.
+          // Inject one bootstrap income transaction equal to total assigned so TBB === $0.
+          state.envelopes = data.envelopes.map(e => ({ ...e }));
+          state.budgetLog = [];
+
+          const importedAssignedTotal = state.envelopes.reduce(
+            (sum, e) => sum + (e.monthlyBudget || 0), 0
+          );
+          state.transactions = importedAssignedTotal > 0
+            ? [{
+                id:          generateId('txn'),
+                type:        'income',
+                envelopeId:  null,
+                amount:      importedAssignedTotal,
+                description: 'Imported Starting Balance',
+                date:        getToday(),
+                createdAt:   new Date().toISOString(),
+              }]
+            : [];
+        }
+
+        state.envelopes = sortSavingsFirst(state.envelopes);
+        if (!state.envelopes.some(e => e.isPinned === true)) {
+          state.envelopes.unshift(createSavingsEnvelope());
+        }
+        let seenPinned = false;
+        state.envelopes = state.envelopes.filter(e => {
+          if (e.isPinned === true) {
+            if (seenPinned) return false;
+            seenPinned = true;
+          }
+          return true;
+        });
+        const seenNames = new Set();
+        state.envelopes = state.envelopes.filter(e => {
+          const key = e.name.toLowerCase();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        });
         saveData(KEYS.envelopes,    state.envelopes);
         saveData(KEYS.transactions, state.transactions);
         saveData(KEYS.budgetLog,    state.budgetLog);
+        saveData(KEYS.savingsGoal,  state.savingsGoal);
         renderApp();
       };
       reader.readAsText(file);
@@ -1412,10 +1714,6 @@
     }
 
     // Returns today's date as "YYYY-MM-DD" for pre-filling date inputs
-    function todayDateString() {
-      return new Date().toISOString().slice(0, 10);
-    }
-
     // Attach all event listeners once at startup
     function wireEvents() {
 
@@ -1444,7 +1742,7 @@
         if (state.selectedEnvelopeId) {
           document.getElementById('input-expense-envelope').value = state.selectedEnvelopeId;
         }
-        document.getElementById('input-expense-date').value = todayDateString();
+        document.getElementById('input-expense-date').value = getToday();
         openModal('modal-add-expense');
       });
 
@@ -1452,7 +1750,7 @@
       document.getElementById('btn-add-income').addEventListener('click', () => {
         document.getElementById('form-add-income').reset();
         document.getElementById('error-income-amount').classList.add('hidden');
-        document.getElementById('input-income-date').value = todayDateString();
+        document.getElementById('input-income-date').value = getToday();
         openModal('modal-add-income');
       });
 
@@ -1563,6 +1861,35 @@
           return;
         }
 
+        // Inline rename: clicking envelope name span swaps it for an input
+        const nameSpan = e.target.closest('.envelope-name');
+        if (nameSpan) {
+          e.stopPropagation();
+          const envelopeId = nameSpan.dataset.envelopeId;
+          const currentName = nameSpan.textContent;
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = currentName;
+          input.className = 'text-sm font-semibold border-b border-indigo-400 outline-none bg-transparent w-full';
+          nameSpan.replaceWith(input);
+          input.focus();
+          input.select();
+          const commit = () => {
+            const val = input.value.trim();
+            if (val && val !== currentName) {
+              renameEnvelope(envelopeId, val);
+            } else {
+              renderApp(); // restore without saving
+            }
+          };
+          input.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter')  { ev.preventDefault(); input.blur(); }
+            if (ev.key === 'Escape') { input.value = currentName; input.blur(); }
+          });
+          input.addEventListener('blur', commit);
+          return;
+        }
+
         // Clicking the card body selects/deselects the envelope filter
         const card = e.target.closest('[data-envelope-id]');
         if (card) {
@@ -1576,6 +1903,8 @@
       envelopeList.addEventListener('dragstart', e => {
         const card = e.target.closest('[data-envelope-id]');
         if (!card) return;
+        const draggingEnv = state.envelopes.find(env => env.id === card.dataset.envelopeId);
+        if (draggingEnv && draggingEnv.isPinned === true) { e.preventDefault(); return; }
         draggedEnvelopeId = card.dataset.envelopeId;
         // FIX: drag vs click — mark drag in progress so the click handler ignores the drop
         isDragging = true;
@@ -1635,6 +1964,8 @@
         const insertIndex = isBelow ? toIdx + 1 : toIdx;
 
         const reordered = [...state.envelopes];
+        const savingsIndex = reordered.findIndex(e => e.isPinned === true);
+        if (insertIndex <= savingsIndex) return;
         const [dragged] = reordered.splice(fromIdx, 1);
         // Adjust insert index for the removal shift when dragging downward
         reordered.splice(insertIndex > fromIdx ? insertIndex - 1 : insertIndex, 0, dragged);
@@ -1650,9 +1981,45 @@
         if (deleteBtn) handleDeleteTransaction(deleteBtn.dataset.transactionId);
       });
 
+      // Savings goal input — converts dollars to cents, persists, re-renders chart
+      document.getElementById('savings-goal-input').addEventListener('input', e => {
+        const raw     = e.target.value;
+        const dollars = raw ? Math.floor(Number(raw)) : 0;
+        e.target.value    = dollars || '';   // reflect cleaned value, removing any decimals
+        state.savingsGoal = dollars * 100;   // store as cents
+        saveData(KEYS.savingsGoal, state.savingsGoal);
+        renderApp();
+      });
+
       // Footer: export / import / reset / demo
       document.getElementById('btn-export').addEventListener('click', handleExport);
       document.getElementById('btn-export-csv').addEventListener('click', handleExportCSV);
+
+      // Toggle import controls panel when "Import JSON" is clicked
+      document.getElementById('btn-import-toggle').addEventListener('click', () => {
+        const el = document.getElementById('import-options');
+        el.classList.toggle('hidden');
+        if (!el.classList.contains('hidden')) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-blue-200');
+          setTimeout(() => { el.classList.remove('ring-2', 'ring-blue-200'); }, 800);
+        }
+      });
+
+      // Import mode hint — kept in sync with the select so the user understands the impact
+      const importModeSelect = document.getElementById('import-mode');
+      const importHint       = document.getElementById('import-mode-hint');
+      function updateImportHint() {
+        const hints = {
+          full:               'Replaces all data (envelopes, balances, and activity)',
+          envelopes:          'Keeps envelope names only. Resets balances and all activity',
+          envelopes_balances: 'Keeps envelopes and balances. Resets all activity',
+        };
+        importHint.textContent = hints[importModeSelect.value] || '';
+      }
+      importModeSelect.addEventListener('change', updateImportHint);
+      updateImportHint();
+
       document.getElementById('input-import').addEventListener('change', handleImport);
       document.getElementById('btn-reset').addEventListener('click', handleResetData);
       document.getElementById('btn-load-demo').addEventListener('click', () => {
@@ -1662,11 +2029,14 @@
     }
 
 
-    // Reset handler — clears all app data, then sets hasSeenDemo so demo never auto-reloads
+    // Reset handler — clears all app data, then reinitializes with only the default Savings envelope.
+    // Sets hasSeenDemo so demo never auto-loads again after a reset.
     function handleResetData() {
       if (!confirm('This will delete ALL data. Continue?')) return;
       localStorage.removeItem(KEYS.appData);
       localStorage.setItem(KEYS.hasSeenDemo, 'true');
+      // Pre-save the default Savings envelope so init() loads it on reload instead of blank state
+      saveData(KEYS.envelopes, [createSavingsEnvelope()]);
       location.reload();
     }
 
@@ -1682,7 +2052,7 @@
       if (!hasData && !hasSeenDemo) {
         // True first visit: auto-load demo and mark it as seen
         const demo = createDemoData();
-        state.envelopes    = demo.envelopes;
+        state.envelopes    = sortSavingsFirst(demo.envelopes);
         state.transactions = demo.transactions;
         state.budgetLog    = demo.budgetLog;
         saveData(KEYS.envelopes,    state.envelopes);
@@ -1691,10 +2061,31 @@
         localStorage.setItem(KEYS.hasSeenDemo, 'true');
       } else {
         // Returning visit or post-reset: load whatever exists (may be empty)
-        state.envelopes    = loadData(KEYS.envelopes);
+        state.envelopes    = sortSavingsFirst(loadData(KEYS.envelopes));
+        if (!state.envelopes.some(e => e.isPinned === true)) {
+          state.envelopes.unshift(createSavingsEnvelope());
+        }
+        let seenPinned = false;
+        state.envelopes = state.envelopes.filter(e => {
+          if (e.isPinned === true) {
+            if (seenPinned) return false;
+            seenPinned = true;
+          }
+          return true;
+        });
+        const seenNames = new Set();
+        state.envelopes = state.envelopes.filter(e => {
+          const key = e.name.toLowerCase();
+          if (seenNames.has(key)) return false;
+          seenNames.add(key);
+          return true;
+        });
         state.transactions = loadData(KEYS.transactions);
         state.budgetLog    = loadData(KEYS.budgetLog);
       }
+
+      // Load savings goal (0 if never set)
+      state.savingsGoal = loadValue(KEYS.savingsGoal, 0);
 
       // Always open on the current calendar month
       const now = new Date();
