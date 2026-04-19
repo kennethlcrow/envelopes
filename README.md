@@ -250,10 +250,6 @@ Important:
 ## Future improvements
 
 - Better mobile layout
-- Smarter guidance when overspending
-- Per-envelope breakdown views
-- Budget history by month
-- Optional sync (without compromising simplicity)
 
 ---
 
