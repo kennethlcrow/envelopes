@@ -10,10 +10,22 @@ A lightweight, local-first envelope budgeting app built around one idea:
 
 👉 **Give every dollar a job — and know exactly what happened to it.**
 
-Runs entirely in a single HTML file — no backend, no dependencies.
+Runs entirely in the browser — no backend, no dependencies.
 
 No accounts. No syncing. No subscriptions.  
 Just a clear, predictable way to plan and track your money.
+
+---
+
+## Using the app
+
+Open it here:
+
+👉 https://envelopes-app.com
+
+No account. No install. No setup.
+
+Everything runs locally in your browser — your data never leaves your device.
 
 ---
 
@@ -211,17 +223,6 @@ You decide:
 - how to adjust when things change
 
 Nothing is hidden. Nothing is inferred.
-
----
-
-## Running the app
-
-1. Download `index.html`
-2. Open it in your browser
-
-That’s it.
-
-No install. No build. No dependencies.
 
 ---
 
