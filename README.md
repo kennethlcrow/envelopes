@@ -22,7 +22,8 @@ Just a clear, predictable way to plan and track your money.
 If the app looks empty — that’s normal. Start here:
 
 1. **(Optional) Load demo data**  
-   Click **Load Demo Data** to see how everything works.
+   Click **Load Demo Data** to see how everything works.  
+   *(Resets the app to a clean example, including Savings.)*
 
 2. **Add your cash (Income)**  
    Click **+ Income** and enter how much money you currently have.  
@@ -113,6 +114,14 @@ Both stay visible — so you always know what you planned and what actually happ
 - Envelope-based money allocation
 - “To Be Budgeted” (TBB) tracking
 - Move funds between envelopes (no fake transactions)
+- Built-in **Savings envelope** (pinned and always at the top)
+
+### Savings tracking
+
+- Dedicated Savings envelope (pinned)
+- Balance-over-time graph
+- Optional goal line for visual progress
+- Tracks only assigned/removed funds (not income)
 
 ### Clarity & visibility
 
@@ -138,13 +147,17 @@ Both stay visible — so you always know what you planned and what actually happ
 - Runs entirely in the browser (no backend)
 - Data stored in `localStorage`
 - Export to JSON (full backup)
-- Import from JSON
+- Import from JSON:
+  - Full restore
+  - Envelopes only
+  - Envelopes + balances
 - Export to CSV (filtered data for analysis)
 
 ### Usability
 
 - Drag-and-drop envelope reordering
 - Click-to-filter transactions by envelope
+- Inline renaming for envelopes (except Savings)
 - Clear overspending indicators (negative balances + visual warning)
 - Simple UI — no setup required
 
