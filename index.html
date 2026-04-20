@@ -1163,7 +1163,12 @@
 
     // Render the budget activity log in the right column.
     function renderBudgetLog() {
-      destroySavingsChart(); // chart only belongs in the Transactions view
+      const _logEnv = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      if (_logEnv && _logEnv.isPinned === true) {
+        renderSavingsChart(state.selectedEnvelopeId);
+      } else {
+        destroySavingsChart();
+      }
       const container = document.getElementById('transaction-list');
       const titleEl   = document.getElementById('transaction-panel-title');
 
