@@ -6,7 +6,16 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(git commit *)",
-      "Bash(git mv *)"
+      "Bash(git mv *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(git merge *)",
+      "Bash(git clean *)",
+      "Bash(git tag *)",
+      "Bash(gh release create v1.3.0 --title v1.3.0 --notes ' *)",
+      "Bash(where gh *)",
+      "Bash('C:/Program Files/GitHub CLI/gh.exe' release create v1.3.0 --title v1.3.0 --notes ' *)",
+      "Bash(git branch *)"
     ]
   }
 }
