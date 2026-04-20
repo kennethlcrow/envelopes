@@ -2,7 +2,7 @@
 
 > **If the envelope is empty, you’re done spending.**
 
-![App Screenshot](./screenshot.png)
+![App Screenshot](./images/desktop.png)
 
 **Try it live →** https://envelopes-app.com
 
@@ -14,6 +14,18 @@ Runs entirely in the browser — no backend, no dependencies.
 
 No accounts. No syncing. No subscriptions.  
 Just a clear, predictable way to plan and track your money.
+
+---
+
+## 📱 Works on mobile too — no install, no app store.
+
+<table>
+  <tr>
+    <td align="center"><img src="./images/mobile_overview.png" width="220"/><br/><sub>Overview</sub></td>
+    <td align="center"><img src="./images/mobile_envelopes.png" width="220"/><br/><sub>Envelopes</sub></td>
+    <td align="center"><img src="./images/mobile_transactions.png" width="220"/><br/><sub>Transactions</sub></td>
+  </tr>
+</table>
 
 ---
 
@@ -29,29 +41,85 @@ Everything runs locally in your browser — your data never leaves your device.
 
 ---
 
-## Quick Start (30–60 seconds)
+## Quick Start
 
-If the app looks empty — that’s normal. Start here:
+### Step 1 — Explore with demo data
 
-1. **(Optional) Load demo data**  
-   Click **Load Demo Data** to see how everything works.  
-   *(Resets the app to a clean example, including Savings.)*
+Before setting up anything real, load the demo data to see how the app works.
 
-2. **Add your cash (Income)**  
-   Click **+ Income** and enter how much money you currently have.  
-   This increases your **To Be Budgeted (TBB)**.
+Click **Load Demo Data** at the bottom of the page (or on the Overview tab on mobile).
 
-3. **Create your envelopes**  
-   These are your categories (Rent, Food, Gas, etc.)
+You’ll see a working budget with envelopes, transactions, and a Savings balance — all pre-filled. Poke around. Move money between envelopes. Add a fake expense. Get comfortable.
 
-4. **Assign your money**  
-   Allocate your TBB into envelopes until:
-   👉 **TBB = $0.00**
+### Step 2 — Reset when you’re ready
 
-5. **Start spending**  
-   Click **+ Expense** and choose the envelope.
+Once you’ve seen enough, wipe the demo and start fresh.
+
+Click **Reset Data**. This clears everything and leaves you with a blank Savings envelope.
+
+### Step 3 — Create your envelopes
+
+These are your spending categories. Click **+ New Envelope** and name them.
+
+Common starting points: Rent, Groceries, Gas, Utilities, Insurance, Emergency Fund.
+
+#### Step 3b — Envelope design is personal
+
+> Your envelope setup should reflect how **you** think about money — not a template someone else designed.
+
+There’s no single right way to do this. A simplified setup might only have envelopes for Savings, Car Insurance, Utilities, Groceries, and Petty Cash — with fun money and gas folded into Petty Cash rather than getting their own envelopes. Someone else might want separate Entertainment and Fuel envelopes for more granular tracking.
+
+Neither is wrong.
+
+Start simple. You can always add more envelopes later. Fewer envelopes means less friction — and you’ll actually use the app.
+
+### Step 4 — Add your income
+
+Click **+ Income** and enter how much money you currently have. This increases your **To Be Budgeted (TBB)**.
+
+If you’re mid-month, just enter your current bank balance. Don’t overthink it.
+
+### Step 5 — Assign money to envelopes
+
+Click **Add Funds** on each envelope and distribute your TBB until:
+
+👉 **TBB = $0.00**
+
+Every dollar should have a job. That’s the whole system.
+
+### Step 6 — Start spending
+
+Click **+ Expense**, choose the right envelope, and record what you spent.
 
 That’s it.
+
+---
+
+## Reducing Transaction Clutter (Advanced)
+
+Over time, your transaction history can get large and noisy.
+
+If you prefer a clean slate while keeping your current financial state:
+
+### Option: Reset history but keep balances
+
+1. **Export your data (JSON)**
+2. Re-import using:
+   - **Envelopes + balances only**
+
+This will:
+
+- Keep all envelope names
+- Keep current balances
+- Remove all historical transactions
+
+👉 Think of it as a "soft reset" of your history.
+
+This is useful if:
+
+- You don’t care about old transactions
+- You want a cleaner interface
+- You’re starting a new phase (new job, move, retirement, etc.)
 
 ---
 
@@ -164,34 +232,7 @@ Both stay visible — so you always know what you planned and what actually happ
   - Envelopes only
   - Envelopes + balances
 - Export to CSV (filtered data for analysis)
-
----
-
-## Reducing Transaction Clutter (Advanced)
-
-Over time, your transaction history can get large and noisy.
-
-If you prefer a clean slate while keeping your current financial state:
-
-### Option: Reset history but keep balances
-
-1. **Export your data (JSON)**
-2. Re-import using:
-   - **Envelopes + balances only**
-
-This will:
-
-- Keep all envelope names
-- Keep current balances
-- Remove all historical transactions
-
-👉 Think of it as a “soft reset” of your history.
-
-This is useful if:
-
-- You don’t care about old transactions
-- You want a cleaner interface
-- You’re starting a new phase (new job, move, retirement, etc.)
+- Configurable backup reminder (choose 7, 14, or 30-day intervals)
 
 ---
 
@@ -235,6 +276,7 @@ Important:
 - Clearing browser data will erase everything
 - Use **Export JSON** to create backups
 - Use **Import JSON** to restore your data
+- Backup reminder settings persist across data resets
 
 ---
 
@@ -247,18 +289,12 @@ Important:
 
 ---
 
-## Future improvements
-
-- Better mobile layout
-
----
-
 ## Development approach
 
-This project is being built using a combination of:
+This project is being built using:
 
-- ChatGPT (architecture, design, reasoning)
-- Claude Code (implementation)
+- Claude (claude.ai) — architecture, design, reasoning, and prompting strategy
+- Claude Code — implementation
 
 See `DESIGN.md` for build philosophy and decisions.
 

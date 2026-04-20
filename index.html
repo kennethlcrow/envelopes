@@ -5,10 +5,60 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Envelope Budget</title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="favicon.svg">
   <!-- Tailwind CSS loaded from CDN — no install or build step needed -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Chart.js — used only for the Savings envelope balance graph -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* ── Mobile tab layout ──────────────────────────────────────────
+       Body gets a data-tab attribute set by the mobile nav JS.
+       On screens narrower than 768 px (md breakpoint), sections are
+       shown/hidden based on the active tab.
+       Desktop (≥768 px) is completely unaffected — all sections show.
+    ────────────────────────────────────────────────────────────────── */
+    @media (max-width: 767px) {
+      /* Room for the fixed bottom nav */
+      body { padding-bottom: 5rem; padding-top: 6rem; }
+
+      /* Sticky compact month navigator — sits above content (z-30) but below modals (z-50) */
+      header {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 30;
+      }
+
+      /* Keep mobile + Expense / + Income buttons visible regardless of viewMode */
+      body[data-tab="transactions"] #mobile-txn-action-buttons { display: flex !important; }
+
+      /* Prevent iOS Safari from zooming when inputs receive focus (requires >= 16px) */
+      input, select, textarea { font-size: 16px !important; }
+
+      /* OVERVIEW TAB — summary bars + footer; hide the two content columns */
+      body[data-tab="overview"] #mobile-main { display: none !important; }
+
+      /* ENVELOPES TAB — envelopes column only */
+      body[data-tab="envelopes"] #mobile-zbbar,
+      body[data-tab="envelopes"] #mobile-filtered,
+      body[data-tab="envelopes"] #mobile-txns-section,
+      body[data-tab="envelopes"] #mobile-footer,
+      body[data-tab="envelopes"] #mobile-data-actions { display: none !important; }
+
+      /* TRANSACTIONS TAB — transactions column only */
+      body[data-tab="transactions"] #mobile-zbbar,
+      body[data-tab="transactions"] #mobile-filtered,
+      body[data-tab="transactions"] #mobile-envelopes-section,
+      body[data-tab="transactions"] #mobile-footer,
+      body[data-tab="transactions"] #mobile-data-actions { display: none !important; }
+
+      /* Active tab indicator colour (set via JS toggling these classes) */
+      .mobile-tab-active { color: #4f46e5; }
+    }
+  </style>
 </head>
 <body class="bg-gray-50 min-h-screen font-sans text-gray-900">
 
@@ -21,7 +71,7 @@
     Total Cash, Total Assigned, and TBB are always all-time totals.
   ============================================================ -->
   <header class="bg-white border-b border-gray-200 px-4 py-3">
-    <div class="max-w-5xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-2">
+    <div class="max-w-5xl mx-auto flex flex-col items-center md:flex-row md:items-center md:justify-between gap-2">
       <div class="flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg"
              class="w-6 h-6 text-gray-700 transition hover:text-gray-900"
@@ -32,15 +82,15 @@
         </svg>
         <div>
           <div class="text-xl font-bold text-gray-800 leading-tight">Envelopes</div>
-          <div class="text-xs font-normal text-gray-400 mt-0.5">Zero Based Budgeting</div>
+          <div class="hidden md:block text-xs font-normal text-gray-400 mt-0.5">Zero Based Budgeting</div>
         </div>
         <a href="https://github.com/kennethlcrow/envelopes/blob/main/README.md"
           target="_blank" rel="noopener noreferrer"
-          class="text-sm text-gray-500 hover:text-gray-800 underline ml-4">
+          class="text-xs md:text-sm text-gray-500 hover:text-gray-800 underline ml-4">
           How it works ↗
         </a>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 justify-center md:justify-start">
         <div class="flex items-center gap-2">
           <button id="btn-prev-month"
             class="text-gray-400 hover:text-gray-700 px-2 py-1 text-lg leading-none">&#8592;</button>
@@ -67,6 +117,15 @@
     </div>
   </div>
 
+  <!-- Backup reminder banner — only visible when a backup is overdue -->
+  <div id="backup-reminder-banner" class="hidden bg-blue-50 border-b border-blue-200 px-4 py-2">
+    <div class="max-w-5xl mx-auto flex items-center justify-between gap-4">
+      <span class="text-sm text-blue-700" id="backup-reminder-message">
+        It's been a while since your last backup. Export JSON to save your data.
+      </span>
+    </div>
+  </div>
+
 
   <!-- ============================================================
     ZBB SUMMARY BAR — the three top-level zero-based budgeting numbers.
@@ -78,7 +137,7 @@
     To Be Budgeted = Total Income - Total Assigned
                      (only income and assignments affect TBB, not expenses)
   ============================================================ -->
-  <section class="bg-white border-b border-gray-200 px-4 py-4">
+  <section id="mobile-zbbar" class="bg-white border-b border-gray-200 px-4 py-4">
     <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4 text-center">
 
       <div>
@@ -101,7 +160,7 @@
   </section>
 
   <!-- Filtered summary — respects the active view (current month or all time) -->
-  <section class="bg-gray-50 border-b border-gray-200 px-4 py-3">
+  <section id="mobile-filtered" class="bg-gray-50 border-b border-gray-200 px-4 py-3">
     <div class="max-w-5xl mx-auto grid grid-cols-3 gap-4 text-center">
 
       <div>
@@ -120,20 +179,26 @@
       </div>
 
     </div>
+    <div class="md:hidden text-center pt-3 text-xs text-gray-500 tracking-widest uppercase">Zero-Based Budgeting</div>
   </section>
 
 
   <!-- ============================================================
     MAIN — two-column layout: envelopes on left, transactions on right
   ============================================================ -->
-  <main class="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
+  <main id="mobile-main" class="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 sm:grid-cols-2 gap-6 items-start">
 
     <!-- LEFT: Envelope cards -->
-    <section>
+    <section id="mobile-envelopes-section">
+      <!-- Mobile-only TBB strip (hidden on desktop) -->
+      <div id="mobile-tbb-strip" class="md:hidden flex items-center justify-between bg-white rounded-lg border px-4 py-2 mb-3">
+        <span class="text-xs text-gray-500 uppercase tracking-wide">To Be Budgeted</span>
+        <span id="mobile-tbb-amount" class="text-sm font-bold text-gray-800">$0.00</span>
+      </div>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Envelopes</h2>
+        <h2 class="text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:block">Envelopes</h2>
         <button id="btn-add-envelope"
-          class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded w-full md:w-auto">
+          class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded md:w-auto w-3/5 mx-auto md:mx-0">
           + New Envelope
         </button>
       </div>
@@ -142,8 +207,9 @@
     </section>
 
     <!-- RIGHT: Transaction list -->
-    <section>
-      <div class="flex items-center justify-between mb-3">
+    <section id="mobile-txns-section">
+      <!-- Desktop header: label left, buttons right -->
+      <div class="hidden md:flex items-center justify-between mb-3">
         <h2 id="transaction-panel-title"
           class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Transactions</h2>
         <div class="flex gap-2 items-center">
@@ -157,8 +223,20 @@
           </button>
         </div>
       </div>
+      <!-- Mobile header: full-width side-by-side buttons, no label -->
+      <div id="mobile-txn-action-buttons" class="flex gap-2 mb-3 md:hidden">
+        <button id="btn-add-expense-mobile"
+          class="flex-1 text-sm bg-rose-500 hover:bg-rose-600 text-white py-2 rounded font-medium">
+          + Expense
+        </button>
+        <button id="btn-add-income-mobile"
+          class="flex-1 text-sm bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded font-medium">
+          + Income
+        </button>
+      </div>
       <!-- View toggle: Transactions / Budget Activity -->
-      <div class="flex mb-3">
+      <!-- Desktop: natural width; Mobile: full-width 50/50 (driven by renderViewToggle) -->
+      <div id="view-toggle-container" class="flex mb-3">
         <button id="btn-view-transactions" type="button"></button>
         <button id="btn-view-activity"     type="button"></button>
       </div>
@@ -185,41 +263,82 @@
   <!-- ============================================================
     FOOTER — export and import buttons
   ============================================================ -->
-  <footer class="border-t border-gray-200 px-4 py-4 mt-2">
+  <!-- Mobile Overview: full data management section (export/import + reset/demo) -->
+  <div id="mobile-data-actions" class="md:hidden px-4 py-5 border-t border-gray-200 mt-2">
+    <div class="text-sm text-gray-400 mb-3 text-center">
+      Your data is stored locally. Use "Export JSON" to back it up.
+    </div>
+    <!-- Export / Import -->
+    <div class="flex flex-wrap gap-x-6 gap-y-3 justify-center mb-4">
+      <button id="btn-export-mobile"     class="text-sm text-gray-500 hover:text-gray-800 underline">Export JSON</button>
+      <button id="btn-export-csv-mobile" class="text-sm text-gray-500 hover:text-gray-800 underline">Export CSV</button>
+      <div class="flex flex-col items-center">
+        <button id="btn-import-toggle-mobile" class="text-sm text-gray-500 hover:text-gray-800 underline">Import JSON</button>
+        <div id="import-options-mobile" class="hidden mt-2 flex flex-col gap-1 w-full max-w-xs">
+          <select id="import-mode-mobile" class="text-xs border rounded px-2 py-1">
+            <option value="full">Import All Data</option>
+            <option value="envelopes">Envelopes Only</option>
+            <option value="envelopes_balances">Envelopes + Balances</option>
+          </select>
+          <label class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded cursor-pointer text-center block">
+            Choose File
+            <input type="file" id="input-import-mobile" accept=".json" class="hidden" />
+          </label>
+          <div id="import-mode-hint-mobile" class="text-xs text-gray-400"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Reset / Demo -->
+    <div class="flex gap-6 justify-center mb-3">
+      <button id="btn-load-demo-mobile" class="text-sm text-gray-500 hover:text-indigo-600 underline">Load Demo Data</button>
+      <button id="btn-reset-mobile"     class="text-sm text-gray-500 hover:text-rose-600 underline">Reset Data</button>
+    </div>
+    <div class="flex justify-center">
+      <button id="btn-backup-reminder-mobile" class="text-sm text-gray-500 hover:text-blue-600 underline">Backup Reminder</button>
+    </div>
+  </div>
+
+  <footer id="mobile-footer" class="hidden md:block border-t border-gray-200 px-4 py-4 mt-2">
     <div class="max-w-5xl mx-auto text-sm text-gray-400 mb-3">
       Your data is stored locally in your browser. Use "Export JSON" to back it up.
     </div>
 
-    <!-- Single row: all links left-right, import controls collapse below -->
-    <div class="max-w-5xl mx-auto flex justify-between items-start text-sm">
+    <!-- Desktop: left/right split. Mobile: single centered column. -->
+    <div class="max-w-5xl mx-auto text-sm">
 
-      <!-- LEFT -->
-      <div class="flex gap-6 items-start">
-        <button id="btn-export" class="text-gray-500 hover:text-gray-800 underline">Export JSON</button>
-        <button id="btn-export-csv" class="text-gray-500 hover:text-gray-800 underline">Export CSV</button>
+      <!-- All five links in a flex row that wraps and centers on mobile -->
+      <div class="flex flex-wrap justify-center md:justify-between items-start gap-x-6 gap-y-3">
 
-        <!-- Import JSON toggles its controls panel -->
-        <div class="flex flex-col items-start">
-          <button id="btn-import-toggle" class="text-gray-500 hover:text-gray-800 underline">Import JSON</button>
-          <div id="import-options" class="hidden mt-2 flex flex-col gap-1 max-w-xs">
-            <select id="import-mode" class="text-xs border rounded px-2 py-1">
-              <option value="full">Import All Data</option>
-              <option value="envelopes">Envelopes Only</option>
-              <option value="envelopes_balances">Envelopes + Balances</option>
-            </select>
-            <label class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded cursor-pointer text-center block">
-              Choose File
-              <input type="file" id="input-import" accept=".json" class="hidden" />
-            </label>
-            <div id="import-mode-hint" class="text-xs text-gray-400"></div>
+        <!-- Export / Import group -->
+        <div class="flex flex-wrap justify-center gap-x-6 gap-y-3 items-start">
+          <button id="btn-export" class="text-gray-500 hover:text-gray-800 underline">Export JSON</button>
+          <button id="btn-export-csv" class="text-gray-500 hover:text-gray-800 underline">Export CSV</button>
+          <button id="btn-backup-reminder" class="text-gray-500 hover:text-blue-600 underline">Backup Reminder</button>
+
+          <!-- Import JSON toggles its controls panel -->
+          <div class="flex flex-col items-center md:items-start">
+            <button id="btn-import-toggle" class="text-gray-500 hover:text-gray-800 underline">Import JSON</button>
+            <div id="import-options" class="hidden mt-2 flex flex-col gap-1 max-w-xs">
+              <select id="import-mode" class="text-xs border rounded px-2 py-1">
+                <option value="full">Import All Data</option>
+                <option value="envelopes">Envelopes Only</option>
+                <option value="envelopes_balances">Envelopes + Balances</option>
+              </select>
+              <label class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded cursor-pointer text-center block">
+                Choose File
+                <input type="file" id="input-import" accept=".json" class="hidden" />
+              </label>
+              <div id="import-mode-hint" class="text-xs text-gray-400"></div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <!-- RIGHT -->
-      <div class="flex gap-6">
-        <button id="btn-load-demo" class="text-gray-500 hover:text-indigo-600 underline">Load Demo Data</button>
-        <button id="btn-reset" class="text-gray-500 hover:text-rose-600 underline">Reset Data</button>
+        <!-- Demo / Reset group -->
+        <div class="flex gap-6 justify-center">
+          <button id="btn-load-demo" class="text-gray-500 hover:text-indigo-600 underline">Load Demo Data</button>
+          <button id="btn-reset" class="text-gray-500 hover:text-rose-600 underline">Reset Data</button>
+        </div>
+
       </div>
 
     </div>
@@ -230,6 +349,34 @@
     MODALS — hidden form overlays, shown on demand.
     Each modal has a dark backdrop; clicking outside the card closes it.
   ============================================================ -->
+
+  <!-- Modal: Backup Reminder Settings -->
+  <div id="modal-backup-reminder"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <h3 class="text-base font-semibold mb-1">Backup Reminder</h3>
+      <p class="text-xs text-gray-400 mb-4">
+        Get reminded to export a backup if you haven't done so recently.
+      </p>
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm text-gray-600 mb-1">Remind me every</label>
+          <select id="input-backup-frequency"
+            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+            <option value="">Never</option>
+            <option value="7">7 days</option>
+            <option value="14">14 days</option>
+            <option value="30">30 days</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
+          <button type="button" id="btn-save-backup-reminder"
+            class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Modal: Add Envelope -->
   <div id="modal-add-envelope"
@@ -326,6 +473,20 @@
     </div>
   </div>
 
+  <!-- Modal: Mobile Confirm (replaces native confirm() which can be suppressed on mobile) -->
+  <div id="modal-mobile-confirm"
+    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+      <p id="mobile-confirm-message" class="text-sm text-gray-700 mb-5"></p>
+      <div class="flex justify-end gap-2">
+        <button id="btn-mobile-confirm-cancel"
+          class="text-sm text-gray-500 hover:text-gray-700 px-4 py-2">Cancel</button>
+        <button id="btn-mobile-confirm-ok"
+          class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <!-- NEW MODAL: Assign Money — assigns TBB funds to a single envelope, not a transaction -->
   <div id="modal-assign-money"
     class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
@@ -350,38 +511,13 @@
     </div>
   </div>
 
-  <!-- Modal: Remove Funds — moves money from an envelope back to TBB, not a transaction -->
-  <div id="modal-remove-money"
-    class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
-    <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
-      <h3 class="text-base font-semibold mb-1">Remove Funds</h3>
-      <p class="text-xs text-gray-400 mb-4">
-        Returns money from this envelope to TBB. Not a transaction — Total Cash stays the same.
-      </p>
-      <form id="form-remove-money" class="space-y-4" novalidate>
-        <div>
-          <label class="block text-sm text-gray-600 mb-1">Amount ($)</label>
-          <input type="number" id="input-remove-amount" min="0.01" step="0.01"
-            class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-          <div id="error-remove-amount" class="text-xs text-rose-500 mt-1 hidden"></div>
-        </div>
-        <div class="flex justify-end gap-2 pt-1">
-          <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
-          <button type="submit"
-            class="text-sm bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded">Remove</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Modal: Move Money -->
   <div id="modal-move-money"
     class="hidden fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 px-4">
     <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
-      <h3 class="text-base font-semibold mb-1">Move Money</h3>
-      <!-- Clarify this is a budgeting action, not a transaction -->
+      <h3 class="text-base font-semibold mb-1">Move Funds</h3>
       <p class="text-xs text-gray-400 mb-4">
-        Adjusts two envelope budgets. Not a transaction — Total Cash and TBB stay the same.
+        Move funds between envelopes or return them to TBB. Not a transaction — Total Cash stays the same.
       </p>
       <form id="form-move-money" class="space-y-4" novalidate>
         <div>
@@ -405,7 +541,7 @@
         <div class="flex justify-end gap-2 pt-1">
           <button type="button" class="modal-close text-sm text-gray-500 hover:text-gray-700 px-3 py-2">Cancel</button>
           <button type="submit"
-            class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Move Money</button>
+            class="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded">Move Funds</button>
         </div>
       </form>
     </div>
@@ -419,12 +555,14 @@
     // JSON.stringify (array → text) and JSON.parse (text → array).
 
     const KEYS = {
-      appData:      'appData',      // single localStorage key for all app state
-      envelopes:    'envelopes',
-      transactions: 'transactions',
-      budgetLog:    'budgetLog',
-      savingsGoal:  'savingsGoal',  // cents; stored inside appData like any other prop
-      hasSeenDemo:  'hasSeenDemo',  // persists across resets; prevents demo from re-loading after Reset Data
+      appData:                 'appData',      // single localStorage key for all app state
+      envelopes:               'envelopes',
+      transactions:            'transactions',
+      budgetLog:               'budgetLog',
+      savingsGoal:             'savingsGoal',  // cents; stored inside appData like any other prop
+      hasSeenDemo:             'hasSeenDemo',  // persists across resets; prevents demo from re-loading after Reset Data
+      backupReminderFrequency: 'backupReminderFrequency', // days between reminders; null = never
+      lastBackupDate:          'lastBackupDate',           // 'YYYY-MM-DD' of last JSON export
     };
 
     const SAVINGS_NAME = 'Savings';
@@ -478,7 +616,6 @@
       currentMonth:       '',   // "YYYY-MM" — which month is being viewed
       selectedEnvelopeId:    null, // null = show all; string = filter by this envelope
       assignTargetEnvelopeId: null, // tracks which envelope the Assign Money modal targets
-      removeTargetEnvelopeId: null, // tracks which envelope the Remove Funds modal targets
       budgetLog:              [],   // log of assign/remove/move actions (display only, never used in math)
       allTime:                false, // true = show all dates; false = show state.currentMonth only
       savingsGoal:            0,    // cents; 0 = no goal set
@@ -491,6 +628,14 @@
     let draggedEnvelopeId = null; // id of card being dragged, null when idle
     // FIX: drag vs click — prevents dragend from triggering the click handler
     let isDragging = false;
+    function isMobile() { return window.innerWidth < 768; }
+
+    // Mobile-only: which envelope card is expanded to show inline transactions
+    let mobileSelectedEnvelopeId = null;
+    // Tracks the active tab in the inline envelope detail panel; resets on each card tap
+    let mobileInlineViewMode = 'transactions';
+    // Pending callback for the mobile custom confirm modal
+    let pendingMobileConfirm = null;
 
 
     // === CALCULATIONS === (totalCash, totalAssigned, toBeBudgeted, envelopeBalance)
@@ -643,10 +788,10 @@
 
     // Fill an envelope <select> with the current envelopes.
     // Pass excludeId to omit one envelope (used in the Move Money "To" list).
-    function populateEnvelopeSelect(selectId, excludeId = null) {
+    function populateEnvelopeSelect(selectId, excludeId = null, excludePinned = false) {
       const select = document.getElementById(selectId);
       select.innerHTML = state.envelopes
-        .filter(e => e.id !== excludeId)
+        .filter(e => e.id !== excludeId && (!excludePinned || !e.isPinned))
         .map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`)
         .join('');
     }
@@ -685,18 +830,29 @@
       tbbEl.textContent = (tbb < 0 ? '-' : '') + formatMoney(tbb);
 
       // Color-code TBB to guide the user toward $0
+      let tbbColor;
       if (tbb > 0) {
         tbbEl.className      = 'text-2xl font-bold text-amber-500';
         tbbLabel.textContent = 'Unassigned — add to an envelope';
         tbbLabel.className   = 'text-xs text-amber-500 mt-0.5';
+        tbbColor             = 'text-amber-500';
       } else if (tbb < 0) {
         tbbEl.className      = 'text-2xl font-bold text-rose-500';
         tbbLabel.textContent = 'Over-budgeted — reduce envelope totals';
         tbbLabel.className   = 'text-xs text-rose-500 mt-0.5';
+        tbbColor             = 'text-rose-500';
       } else {
         tbbEl.className      = 'text-2xl font-bold text-emerald-600';
         tbbLabel.textContent = 'All money assigned ✓';
         tbbLabel.className   = 'text-xs text-emerald-600 mt-0.5';
+        tbbColor             = 'text-emerald-600';
+      }
+
+      // Mobile TBB strip above envelope list
+      const mobileTbbEl = document.getElementById('mobile-tbb-amount');
+      if (mobileTbbEl) {
+        mobileTbbEl.textContent = (tbb < 0 ? '-' : '') + formatMoney(tbb);
+        mobileTbbEl.className   = `text-sm font-bold ${tbbColor}`;
       }
     }
 
@@ -721,6 +877,112 @@
                            :           'text-lg font-semibold text-gray-800';
     }
 
+    // Build inline transaction list HTML for the mobile expanded-envelope panel.
+    function buildMobileInlineTxns(envelopeId) {
+      const env = state.envelopes.find(e => e.id === envelopeId);
+      if (!env) return '';
+      const isSavings = env.isPinned === true;
+
+      // --- Transaction rows ---
+      function buildTxnRows() {
+        const txns = filterByView(state.transactions)
+          .filter(t => t.type === 'expense' && t.envelopeId === envelopeId)
+          .sort((a, b) => b.date.localeCompare(a.date));
+        if (txns.length === 0)
+          return `<p class="text-sm text-gray-400 text-center py-6">No transactions for this envelope.</p>`;
+        return txns.map(t => `
+          <div class="bg-white rounded shadow-sm p-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${env.color}"></div>
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-800 truncate">${escapeHtml(t.description || env.name)}</div>
+                <div class="text-xs text-gray-400">${t.date}</div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <div class="text-sm font-semibold text-gray-800">−${formatMoney(t.amount)}</div>
+              <button class="btn-delete-transaction text-gray-300 hover:text-rose-500 flex items-center justify-center"
+                style="min-width:44px;min-height:44px" data-transaction-id="${t.id}">✕</button>
+            </div>
+          </div>`).join('');
+      }
+
+      // --- Budget Activity rows (filtered to this envelope) ---
+      function buildActivityRows() {
+        const entries = filterByView(state.budgetLog)
+          .filter(e => e.fromEnvelopeId === envelopeId || e.toEnvelopeId === envelopeId)
+          .sort((a, b) => b.date.localeCompare(a.date));
+        if (entries.length === 0)
+          return `<p class="text-sm text-gray-400 text-center py-6">No budget activity for this envelope.</p>`;
+        return entries.map(entry => {
+          const fromEnv  = state.envelopes.find(e => e.id === entry.fromEnvelopeId);
+          const toEnv    = state.envelopes.find(e => e.id === entry.toEnvelopeId);
+          const fromName = fromEnv ? escapeHtml(fromEnv.name) : '—';
+          const toName   = toEnv   ? escapeHtml(toEnv.name)   : '—';
+          let description, dotColor;
+          if (entry.type === 'assign') {
+            description = `Assigned to ${toName}`;      dotColor = '#10b981';
+          } else if (entry.type === 'remove') {
+            description = `Removed from ${fromName}`;   dotColor = '#f43f5e';
+          } else {
+            description = `Moved from ${fromName} to ${toName}`; dotColor = '#6366f1';
+          }
+          return `
+          <div class="bg-white rounded shadow-sm p-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-2 h-2 rounded-full flex-shrink-0" style="background:${dotColor}"></div>
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-gray-800 truncate">${description}</div>
+                <div class="text-xs text-gray-400">${entry.date}</div>
+              </div>
+            </div>
+            <div class="text-sm font-semibold text-gray-800">${formatMoney(entry.amount)}</div>
+          </div>`;
+        }).join('');
+      }
+
+      // Savings: chart + activity only, no toggle
+      if (isSavings) {
+        const chartHtml = `
+          <div id="mobile-savings-chart-container" class="bg-white rounded shadow-sm p-3 mb-3">
+            <div class="flex items-center justify-between mb-2">
+              <div class="text-xs text-gray-400 uppercase tracking-wide">Balance Over Time</div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-500">Goal:</span>
+                <input id="mobile-savings-goal-input" type="number" step="1" min="0"
+                  placeholder="$" class="text-xs border rounded px-2 py-1 w-24" />
+              </div>
+            </div>
+            <canvas id="mobile-savings-chart"></canvas>
+          </div>`;
+        return `
+          <div class="mt-3">
+            <button class="btn-mobile-back text-sm text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mb-3 py-1">← All Envelopes</button>
+            ${chartHtml}
+            <div class="space-y-2">${buildActivityRows()}</div>
+          </div>`;
+      }
+
+      // Non-Savings: Transactions / Budget Activity toggle
+      const onTxn      = mobileInlineViewMode === 'transactions';
+      const activeBtn  = 'text-xs px-3 py-1.5 border border-indigo-600 bg-indigo-600 text-white';
+      const inactiveBtn= 'text-xs px-3 py-1.5 border border-gray-200 bg-white text-gray-500';
+      const toggleHtml = `
+        <div class="flex mb-3">
+          <button class="btn-mobile-inline-toggle flex-1 rounded-l ${onTxn ? activeBtn : inactiveBtn}" data-mode="transactions">Transactions</button>
+          <button class="btn-mobile-inline-toggle flex-1 rounded-r ${onTxn ? inactiveBtn : activeBtn}" data-mode="activity">Budget Activity</button>
+        </div>`;
+
+      const rows = onTxn ? buildTxnRows() : buildActivityRows();
+
+      return `
+        <div class="mt-3">
+          <button class="btn-mobile-back text-sm text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mb-3 py-1">← All Envelopes</button>
+          ${toggleHtml}
+          <div class="space-y-2">${rows}</div>
+        </div>`;
+    }
+
     // Render all envelope cards in the left column.
     function renderEnvelopes() {
       const container = document.getElementById('envelope-list');
@@ -735,11 +997,16 @@
         return;
       }
 
-      container.innerHTML = state.envelopes.map(env => {
+      // On mobile with a card expanded, only show that card (plus inline txns below it)
+      const envsToRender = (isMobile() && mobileSelectedEnvelopeId)
+        ? state.envelopes.filter(env => env.id === mobileSelectedEnvelopeId)
+        : state.envelopes;
+
+      container.innerHTML = envsToRender.map(env => {
         const spent      = calcEnvelopeSpent(env.id);
         const remaining  = calcEnvelopeRemaining(env.id);
         const isOver     = remaining < 0;
-        const isSelected = state.selectedEnvelopeId === env.id;
+        const isSelected = isMobile() ? mobileSelectedEnvelopeId === env.id : state.selectedEnvelopeId === env.id;
 
         // Progress bar: % of budget spent this month, capped at 100% visually
         const pct      = env.monthlyBudget > 0
@@ -752,18 +1019,60 @@
         return `
           <div
             draggable="true"
-            class="bg-white rounded-lg border p-4 cursor-grab transition-all duration-150 hover:shadow-md select-none
+            class="group bg-white rounded-lg border p-4 cursor-grab transition-all duration-150 hover:shadow-md select-none
                    ${isSelected ? 'ring-2 ring-indigo-400 shadow-md' : 'shadow-sm'}"
             style="border-left: 4px solid ${env.color}"
             data-envelope-id="${env.id}"
           >
             <div class="flex items-start gap-2">
-              <!-- Control column: pin for Savings, reorder arrows for others -->
-              <div class="w-5 flex flex-col items-center text-gray-400 text-xs pt-1 leading-none select-none pointer-events-none">
-                ${env.isPinned === true
-                  ? '<span>📌</span>'
-                  : '<span class="opacity-50 cursor-default">▲</span><span class="opacity-50 cursor-default">▼</span>'}
-              </div>
+              <!-- Control column: Savings shows 📌 on both viewports.
+                   Non-Savings: mobile = arrows + trash; desktop = drag handle + trash. -->
+              ${env.isPinned === true
+                ? '<div class="w-5 flex flex-col items-center text-gray-400 text-xs pt-1 leading-none pointer-events-none select-none"><span>📌</span></div>'
+                : `<!-- Mobile: tap-reorder arrows + trash (hidden on desktop) -->
+                   <div class="md:hidden w-11 flex flex-col items-center text-gray-400 text-xs leading-none select-none">
+                     <button
+                       class="btn-reorder-up w-full flex items-center justify-center opacity-50 hover:opacity-100 hover:text-gray-600"
+                       style="min-height:36px"
+                       data-envelope-id="${env.id}"
+                       aria-label="Move envelope up">▲</button>
+                     <button
+                       class="btn-reorder-down w-full flex items-center justify-center opacity-50 hover:opacity-100 hover:text-gray-600"
+                       style="min-height:36px"
+                       data-envelope-id="${env.id}"
+                       aria-label="Move envelope down">▼</button>
+                     <button
+                       class="btn-delete-envelope w-full flex items-center justify-center text-gray-400 hover:text-rose-500 opacity-50 hover:opacity-100 mt-1"
+                       style="min-height:36px"
+                       data-envelope-id="${env.id}"
+                       aria-label="Delete envelope">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                         <path stroke-linecap="round" stroke-linejoin="round"
+                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                       </svg>
+                     </button>
+                   </div>
+                   <!-- Desktop: drag handle + trash, revealed on card hover -->
+                   <div class="hidden md:flex flex-col items-center w-5 text-gray-400 select-none">
+                     <div class="opacity-0 group-hover:opacity-60 transition-opacity duration-150 pointer-events-none">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-5" viewBox="0 0 24 24" fill="currentColor">
+                         <circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/>
+                         <circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/>
+                       </svg>
+                     </div>
+                     <button
+                       class="btn-delete-envelope w-full flex items-center justify-center text-gray-400 hover:text-rose-500 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity duration-150 mt-1"
+                       style="min-height:36px"
+                       data-envelope-id="${env.id}"
+                       aria-label="Delete envelope">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+                         <path stroke-linecap="round" stroke-linejoin="round"
+                               d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                       </svg>
+                     </button>
+                   </div>`}
 
               <!-- Envelope content -->
               <div class="flex-1">
@@ -794,49 +1103,58 @@
 
                 ${isOver ? '<div class="text-xs text-rose-400 mb-2">Over budget this month</div>' : ''}
 
-                <!-- Bottom row: spent amount + action buttons -->
-                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                <!-- Bottom row: Add Funds (conditional) + Move Funds -->
+                <div class="flex flex-col gap-1">
                   <div class="text-xs text-gray-400">Spent: ${formatMoney(spent)}</div>
-                  <div class="flex flex-wrap gap-2 md:flex-nowrap md:gap-3">
-                    <!-- only shown when TBB > 0; assigns TBB funds to this envelope -->
+                  <div class="flex flex-wrap gap-2">
                     ${tbb > 0 ? `<button
                       class="btn-assign-money text-xs text-emerald-500 hover:text-emerald-700 py-1.5 px-2"
                       data-envelope-id="${env.id}">
                       + Add Funds
                     </button>` : ''}
-                    <!-- only shown when budget > 0; returns funds to TBB -->
-                    ${env.monthlyBudget > 0 ? `<button
-                      class="btn-remove-money text-xs text-rose-400 hover:text-rose-600 py-1.5 px-2"
-                      data-envelope-id="${env.id}">
-                      - Remove Funds
-                    </button>` : ''}
                     <button
                       class="btn-move-money text-xs text-indigo-400 hover:text-indigo-600 py-1.5 px-2"
                       data-envelope-id="${env.id}">
-                      ⇄ Move
-                    </button>
-                    <button
-                      class="btn-delete-envelope text-xs text-gray-300 hover:text-rose-500 py-1.5 px-2"
-                      data-envelope-id="${env.id}">
-                      Delete
+                      ⇄ Move Funds
                     </button>
                   </div>
                 </div>
               </div>
             </div>
-          </div>`;
+          </div>${isMobile() && env.id === mobileSelectedEnvelopeId ? buildMobileInlineTxns(env.id) : ''}`;
       }).join('');
+
+      // After innerHTML is set, render the savings chart into the injected canvas (if applicable)
+      if (isMobile() && mobileSelectedEnvelopeId) {
+        const selEnv = state.envelopes.find(e => e.id === mobileSelectedEnvelopeId);
+        if (selEnv && selEnv.isPinned === true) {
+          renderMobileSavingsChart(mobileSelectedEnvelopeId);
+        } else {
+          destroyMobileSavingsChart();
+        }
+      } else {
+        destroyMobileSavingsChart();
+      }
     }
 
     // Style the Transactions / Budget Activity toggle buttons to match viewMode.
     function renderViewToggle() {
+      const toggleContainer = document.getElementById('view-toggle-container');
+      // Hide toggle on desktop when Savings is selected — that panel is activity-only.
+      // Never hide it on mobile (mobile uses mobileSelectedEnvelopeId, not state.selectedEnvelopeId).
+      const desktopSelEnv = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      const savingsSelected = !isMobile() && desktopSelEnv && desktopSelEnv.isPinned === true;
+      toggleContainer.classList.toggle('hidden', !!savingsSelected);
+
       const onTxn = viewMode === 'transactions';
       const activeClass   = 'text-xs px-3 py-1.5 border border-indigo-600 bg-indigo-600 text-white';
       const inactiveClass = 'text-xs px-3 py-1.5 border border-gray-200 bg-white text-gray-500 hover:text-gray-700';
+      // md:flex-none flex-1 makes each button 50% on mobile, natural width on desktop
+      const mobileStretch = ' md:flex-none flex-1';
       document.getElementById('btn-view-transactions').className =
-        (onTxn ? activeClass : inactiveClass) + ' rounded-l';
+        (onTxn ? activeClass : inactiveClass) + ' rounded-l' + mobileStretch;
       document.getElementById('btn-view-activity').className =
-        (onTxn ? inactiveClass : activeClass) + ' rounded-r';
+        (onTxn ? inactiveClass : activeClass) + ' rounded-r' + mobileStretch;
       document.getElementById('btn-view-transactions').textContent = 'Transactions';
       document.getElementById('btn-view-activity').textContent     = 'Budget Activity';
     }
@@ -845,15 +1163,29 @@
     function renderBudgetLog() {
       destroySavingsChart(); // chart only belongs in the Transactions view
       const container = document.getElementById('transaction-list');
-      document.getElementById('transaction-panel-title').textContent = 'Budget Activity';
+      const titleEl   = document.getElementById('transaction-panel-title');
+
+      // On desktop, filter to the selected envelope when one is active
+      const filterEnvId = isMobile() ? null : state.selectedEnvelopeId;
+      if (filterEnvId) {
+        const env = state.envelopes.find(e => e.id === filterEnvId);
+        titleEl.textContent = env ? env.name : 'Budget Activity';
+      } else {
+        titleEl.textContent = 'Budget Activity';
+      }
 
       let entries = filterByView(state.budgetLog);
+      if (filterEnvId) {
+        entries = entries.filter(
+          e => e.fromEnvelopeId === filterEnvId || e.toEnvelopeId === filterEnvId
+        );
+      }
       entries = [...entries].sort((a, b) => b.date.localeCompare(a.date));
 
       if (entries.length === 0) {
-        const msg = state.allTime
-          ? 'No budget activity yet.'
-          : 'No budget activity for this period.';
+        const msg = filterEnvId
+          ? 'No budget activity for this envelope.'
+          : state.allTime ? 'No budget activity yet.' : 'No budget activity for this period.';
         container.innerHTML = `<p class="text-sm text-gray-400 text-center py-10">${msg}</p>`;
         return;
       }
@@ -895,10 +1227,13 @@
       const container = document.getElementById('transaction-list');
       const titleEl   = document.getElementById('transaction-panel-title');
 
-      // Show Savings graph when the Savings envelope is selected; hide it otherwise
-      const selectedEnv = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      // On mobile the Transactions tab always shows everything — filtering only applies on desktop
+      const effectiveEnvId = isMobile() ? null : state.selectedEnvelopeId;
+
+      // Show Savings graph when the Savings envelope is selected (desktop only); hide otherwise
+      const selectedEnv = state.envelopes.find(e => e.id === effectiveEnvId);
       if (selectedEnv && selectedEnv.isPinned === true) {
-        renderSavingsChart(state.selectedEnvelopeId);
+        renderSavingsChart(effectiveEnvId);
       } else {
         destroySavingsChart();
       }
@@ -906,13 +1241,13 @@
       // Start with all transactions in the active view period
       let txns = filterByView(state.transactions);
 
-      // If an envelope is selected, show only that envelope's expenses.
+      // If an envelope is selected (desktop only), show only that envelope's expenses.
       // Income is global — it never belongs to a specific envelope.
-      if (state.selectedEnvelopeId) {
-        const env = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      if (effectiveEnvId) {
+        const env = state.envelopes.find(e => e.id === effectiveEnvId);
         titleEl.textContent = env ? env.name : 'Transactions';
         txns = txns.filter(
-          t => t.type === 'expense' && t.envelopeId === state.selectedEnvelopeId
+          t => t.type === 'expense' && t.envelopeId === effectiveEnvId
         );
       } else {
         titleEl.textContent = 'Transactions';
@@ -922,7 +1257,7 @@
       txns.sort((a, b) => b.date.localeCompare(a.date));
 
       if (txns.length === 0) {
-        const emptyMsg = state.selectedEnvelopeId
+        const emptyMsg = effectiveEnvId
           ? 'No transactions for this envelope.'
           : state.allTime ? 'No transactions yet.' : 'No transactions for this period.';
         container.innerHTML = `
@@ -953,7 +1288,8 @@
                 ${isIncome ? '+' : '−'}${formatMoney(t.amount)}
               </div>
               <button
-                class="btn-delete-transaction text-gray-300 hover:text-rose-500 text-xs ml-1"
+                class="btn-delete-transaction text-gray-300 hover:text-rose-500 text-xs flex items-center justify-center"
+                style="min-width:44px;min-height:44px"
                 data-transaction-id="${t.id}">✕</button>
             </div>
           </div>`;
@@ -976,6 +1312,7 @@
 
     // Persistent Chart.js instance — destroyed before each re-render to avoid memory leaks.
     let savingsChart = null;
+    let mobileSavingsChart = null;
 
 
     // === DEMO DATA ===
@@ -1046,6 +1383,26 @@
     function renderDemoBanner() {
       const isDemo = state.envelopes.some(e => e.id.startsWith('demo_'));
       document.getElementById('demo-banner').classList.toggle('hidden', !isDemo);
+    }
+
+    function renderBackupReminderBanner() {
+      const banner = document.getElementById('backup-reminder-banner');
+      const freq   = loadValue(KEYS.backupReminderFrequency, null);
+      if (!freq) { banner.classList.add('hidden'); return; }
+      const last = loadValue(KEYS.lastBackupDate, null);
+      if (!last) {
+        // Frequency is set but no backup ever recorded — start the clock from today
+        saveData(KEYS.lastBackupDate, getToday());
+        banner.classList.add('hidden');
+        return;
+      }
+      const daysSince = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+      const overdue   = daysSince >= parseInt(freq, 10);
+      banner.classList.toggle('hidden', !overdue);
+      if (overdue) {
+        document.getElementById('backup-reminder-message').textContent =
+          `It's been ${daysSince} day${daysSince === 1 ? '' : 's'} since your last backup. Export JSON to save your data.`;
+      }
     }
 
 
@@ -1176,16 +1533,79 @@
       document.getElementById('savings-chart-container').classList.add('hidden');
     }
 
+    function destroyMobileSavingsChart() {
+      if (mobileSavingsChart) { mobileSavingsChart.destroy(); mobileSavingsChart = null; }
+    }
+
+    function renderMobileSavingsChart(envelopeId) {
+      destroyMobileSavingsChart();
+      const container = document.getElementById('mobile-savings-chart-container');
+      const canvas    = document.getElementById('mobile-savings-chart');
+      if (!container || !canvas) return;
+
+      const goalInput = document.getElementById('mobile-savings-goal-input');
+      if (goalInput) goalInput.value = state.savingsGoal ? (state.savingsGoal / 100) : '';
+
+      const chartData = buildSavingsChartData(envelopeId);
+      if (!chartData) {
+        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      const dataMax   = Math.max(...chartData.data);
+      const goalValue = state.savingsGoal / 100;
+      const baseMax   = Math.max(dataMax, goalValue);
+      const yMax      = baseMax > 0 ? baseMax * 1.25 : 100;
+
+      mobileSavingsChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: chartData.labels,
+          datasets: [
+            {
+              data:             chartData.data,
+              borderColor:      '#14b8a6',
+              backgroundColor:  'rgba(20, 184, 166, 0.08)',
+              fill:             true,
+              tension:          0.3,
+              pointRadius:      4,
+              pointHoverRadius: 5,
+            },
+            ...(state.savingsGoal > 0 ? [{
+              data:        chartData.data.map(() => state.savingsGoal / 100),
+              borderColor: '#22c55e',
+              borderWidth: 2,
+              borderDash:  [6, 6],
+              pointRadius: 0,
+              fill:        false,
+            }] : []),
+          ],
+        },
+        options: {
+          animation:  false,
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { font: { size: 11 }, maxTicksLimit: 8 } },
+            y: { beginAtZero: true, suggestedMax: yMax, ticks: { font: { size: 11 }, callback: v => '$' + v.toFixed(2) } },
+          },
+        },
+      });
+    }
+
 
     // Master render — call this after any state change.
     function renderApp() {
       renderDemoBanner();
+      renderBackupReminderBanner();
       renderMonthLabel();
       renderSummaryBar();
       renderFilteredSummary();
       renderEnvelopes();
       renderViewToggle();
-      viewMode === 'activity' ? renderBudgetLog() : renderTransactions();
+      const _selEnv = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+      const _forceBudgetLog = _selEnv && _selEnv.isPinned === true;
+      (viewMode === 'activity' || _forceBudgetLog) ? renderBudgetLog() : renderTransactions();
     }
 
 
@@ -1370,18 +1790,20 @@
       renderApp();
     }
 
-    // Move money between two envelopes.
-    // NOT a transaction — only adjusts two monthlyBudget values.
-    // Total Cash, Total Assigned, and TBB are all unchanged.
+    // Move funds from one envelope.
+    // When toId === '__TBB__': return funds to TBB by only shrinking the source budget.
+    //   TBB rises automatically (calcToBeBudgeted = income - totalAssigned).
+    //   Logged as type:'remove' with toEnvelopeId:null — matches old handleRemoveMoney format.
+    // When toId is an envelope id: adjust both budgets (original behaviour).
+    // Validation preventing amount > fromEnv.monthlyBudget applies in both cases.
     function handleMoveMoney(e) {
       e.preventDefault();
 
-      const fromId    = document.getElementById('input-move-from').value;
-      const toId      = document.getElementById('input-move-to').value;
-      // FIX: NaN handling — guard against empty input before parseFloat
-      const rawMove   = document.getElementById('input-move-amount').value;
-      const amount    = rawMove ? Math.round(parseFloat(rawMove) * 100) : 0; // cents
-      const errEl     = document.getElementById('error-move-amount');
+      const fromId  = document.getElementById('input-move-from').value;
+      const toId    = document.getElementById('input-move-to').value;
+      const rawMove = document.getElementById('input-move-amount').value;
+      const amount  = rawMove ? Math.round(parseFloat(rawMove) * 100) : 0; // cents
+      const errEl   = document.getElementById('error-move-amount');
       errEl.classList.add('hidden');
 
       const fromEnv = state.envelopes.find(env => env.id === fromId);
@@ -1391,23 +1813,26 @@
         errEl.classList.remove('hidden');
         return;
       }
-      // Prevent the from-envelope's budget going below $0
       if (amount > fromEnv.monthlyBudget) {
         errEl.textContent = `Cannot move more than ${formatMoney(fromEnv.monthlyBudget)} from "${fromEnv.name}".`;
         errEl.classList.remove('hidden');
         return;
       }
 
-      // Adjust both budgets — this is the entire operation (integer subtraction/addition)
-      state.envelopes = state.envelopes.map(env => {
-        if (env.id === fromId)
-          return { ...env, monthlyBudget: env.monthlyBudget - amount };
-        if (env.id === toId)
-          return { ...env, monthlyBudget: env.monthlyBudget + amount };
-        return env;
-      });
+      if (toId === '__TBB__') {
+        state.envelopes = state.envelopes.map(env =>
+          env.id === fromId ? { ...env, monthlyBudget: env.monthlyBudget - amount } : env
+        );
+        state.budgetLog.push({ id: generateId('log'), type: 'remove', amount, fromEnvelopeId: fromId, toEnvelopeId: null, date: getToday() });
+      } else {
+        state.envelopes = state.envelopes.map(env => {
+          if (env.id === fromId) return { ...env, monthlyBudget: env.monthlyBudget - amount };
+          if (env.id === toId)   return { ...env, monthlyBudget: env.monthlyBudget + amount };
+          return env;
+        });
+        state.budgetLog.push({ id: generateId('log'), type: 'move', amount, fromEnvelopeId: fromId, toEnvelopeId: toId, date: getToday() });
+      }
 
-      state.budgetLog.push({ id: generateId('log'), type: 'move', amount, fromEnvelopeId: fromId, toEnvelopeId: toId, date: getToday() });
       saveData(KEYS.budgetLog, state.budgetLog);
       saveData(KEYS.envelopes, state.envelopes);
       closeAllModals();
@@ -1464,49 +1889,11 @@
       renderApp();
     }
 
-    // Remove Funds — moves money from an envelope back to TBB.
-    // NOT a transaction — only decreases one envelope's monthlyBudget.
-    // Total Cash is unchanged; TBB increases automatically via calcToBeBudgeted().
-    function handleRemoveMoney(e) {
-      e.preventDefault();
-
-      const rawRemove = document.getElementById('input-remove-amount').value;
-      const amount    = rawRemove ? Math.round(parseFloat(rawRemove) * 100) : 0; // cents
-      const errEl     = document.getElementById('error-remove-amount');
-      errEl.classList.add('hidden');
-
-      const env = state.envelopes.find(e => e.id === state.removeTargetEnvelopeId);
-      if (!env) return;
-
-      if (!amount || amount <= 0) {
-        errEl.textContent = 'Enter an amount greater than $0.';
-        errEl.classList.remove('hidden');
-        return;
-      }
-      if (amount > env.monthlyBudget) {
-        errEl.textContent = `Cannot remove more than ${formatMoney(env.monthlyBudget)} (assigned amount).`;
-        errEl.classList.remove('hidden');
-        return;
-      }
-
-      state.envelopes = state.envelopes.map(env =>
-        env.id === state.removeTargetEnvelopeId
-          ? { ...env, monthlyBudget: env.monthlyBudget - amount }
-          : env
-      );
-
-      state.budgetLog.push({ id: generateId('log'), type: 'remove', amount, fromEnvelopeId: state.removeTargetEnvelopeId, toEnvelopeId: null, date: getToday() });
-      saveData(KEYS.budgetLog, state.budgetLog);
-      saveData(KEYS.envelopes, state.envelopes);
-      state.removeTargetEnvelopeId = null;
-      closeAllModals();
-      e.target.reset();
-      renderApp();
-    }
-
     // Navigate to the previous or next month (always exits All Time mode)
     function changeMonth(direction) {
       state.allTime = false;
+      mobileSelectedEnvelopeId = null;
+      mobileInlineViewMode = 'transactions';
       const [year, month] = state.currentMonth.split('-').map(Number);
       const d = new Date(year, month - 1 + direction, 1);
       state.currentMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -1527,6 +1914,8 @@
       link.href     = 'data:application/json;charset=utf-8,' + encodeURIComponent(payload);
       link.download = `budget-export-${state.currentMonth}.json`;
       link.click();
+      saveData(KEYS.lastBackupDate, getToday());
+      renderBackupReminderBanner();
     }
 
     // Export filtered transactions + budget log as a single CSV file.
@@ -1604,7 +1993,7 @@
     //   full              — replaces all data (envelopes, transactions, budgetLog)
     //   envelopes         — imports envelope names only; resets all balances and activity
     //   envelopes_balances — imports envelopes with budgets; resets transactions and budgetLog
-    function handleImport(e) {
+    function handleImport(e, modeOverride) {
       const file = e.target.files[0];
       if (!file) return;
 
@@ -1627,7 +2016,7 @@
           return;
         }
 
-        const importMode = document.getElementById('import-mode').value;
+        const importMode = modeOverride || document.getElementById('import-mode').value;
 
         // Full import requires valid transactions array
         if (importMode === 'full') {
@@ -1715,7 +2104,36 @@
 
     // Returns today's date as "YYYY-MM-DD" for pre-filling date inputs
     // Attach all event listeners once at startup
+    // Populate the "To" select in the Move Funds modal.
+    // Prepends "To Be Budgeted" as the first option so funds can be returned to TBB.
+    function populateMoveToSelect(excludeId) {
+      populateEnvelopeSelect('input-move-to', excludeId);
+      const sel = document.getElementById('input-move-to');
+      const opt = document.createElement('option');
+      opt.value = '__TBB__';
+      opt.textContent = 'To Be Budgeted';
+      sel.insertBefore(opt, sel.firstChild);
+    }
+
+    function showMobileConfirm(message, onConfirm) {
+      document.getElementById('mobile-confirm-message').textContent = message;
+      pendingMobileConfirm = onConfirm;
+      document.getElementById('modal-mobile-confirm').classList.remove('hidden');
+    }
+
     function wireEvents() {
+
+      // Mobile confirm modal buttons
+      document.getElementById('btn-mobile-confirm-cancel').addEventListener('click', () => {
+        pendingMobileConfirm = null;
+        document.getElementById('modal-mobile-confirm').classList.add('hidden');
+      });
+      document.getElementById('btn-mobile-confirm-ok').addEventListener('click', () => {
+        document.getElementById('modal-mobile-confirm').classList.add('hidden');
+        const action = pendingMobileConfirm;
+        pendingMobileConfirm = null;
+        if (action) action();
+      });
 
       // Month navigation
       document.getElementById('btn-prev-month').addEventListener('click', () => changeMonth(-1));
@@ -1738,8 +2156,10 @@
         }
         document.getElementById('form-add-expense').reset();
         document.getElementById('error-expense-amount').classList.add('hidden');
-        populateEnvelopeSelect('input-expense-envelope');
-        if (state.selectedEnvelopeId) {
+        populateEnvelopeSelect('input-expense-envelope', null, true);
+        // Only pre-select if it's not the Savings envelope
+        const preselect = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+        if (preselect && !preselect.isPinned) {
           document.getElementById('input-expense-envelope').value = state.selectedEnvelopeId;
         }
         document.getElementById('input-expense-date').value = getToday();
@@ -1754,9 +2174,16 @@
         openModal('modal-add-income');
       });
 
+      // Mobile duplicates — delegate to the same modal openers
+      document.getElementById('btn-add-expense-mobile').addEventListener('click', () =>
+        document.getElementById('btn-add-expense').click());
+      document.getElementById('btn-add-income-mobile').addEventListener('click', () =>
+        document.getElementById('btn-add-income').click());
+
       // All Time toggle
       document.getElementById('btn-all-time').addEventListener('click', () => {
         state.allTime = !state.allTime;
+        mobileInlineViewMode = 'transactions';
         renderApp();
       });
 
@@ -1776,11 +2203,10 @@
       document.getElementById('form-add-income').addEventListener('submit', handleAddIncome);
       document.getElementById('form-move-money').addEventListener('submit', handleMoveMoney);
       document.getElementById('form-assign-money').addEventListener('submit', handleAssignMoney);
-      document.getElementById('form-remove-money').addEventListener('submit', handleRemoveMoney);
 
-      // When "From" changes in Move Money, refresh "To" to exclude that envelope
+      // When "From" changes, refresh "To" (keeping TBB at the top)
       document.getElementById('input-move-from').addEventListener('change', () => {
-        populateEnvelopeSelect('input-move-to', document.getElementById('input-move-from').value);
+        populateMoveToSelect(document.getElementById('input-move-from').value);
       });
 
       // Color swatch clicks in the Add Envelope modal
@@ -1806,6 +2232,16 @@
       // Delegated: envelope list — click handling
       const envelopeList = document.getElementById('envelope-list');
 
+      // Mobile savings goal input — delegated because the element is injected dynamically
+      envelopeList.addEventListener('input', e => {
+        if (e.target.id !== 'mobile-savings-goal-input') return;
+        const dollars = e.target.value ? Math.floor(Number(e.target.value)) : 0;
+        e.target.value    = dollars || '';
+        state.savingsGoal = dollars * 100;
+        saveData(KEYS.savingsGoal, state.savingsGoal);
+        renderMobileSavingsChart(mobileSelectedEnvelopeId);
+      });
+
       envelopeList.addEventListener('click', e => {
         // FIX: drag vs click — suppress the post-drag click and reset so future clicks work
         if (isDragging) {
@@ -1825,30 +2261,14 @@
           return;
         }
 
-        const removeBtn = e.target.closest('.btn-remove-money');
-        if (removeBtn) {
-          e.stopPropagation();
-          state.removeTargetEnvelopeId = removeBtn.dataset.envelopeId;
-          document.getElementById('form-remove-money').reset();
-          document.getElementById('error-remove-amount').classList.add('hidden');
-          openModal('modal-remove-money');
-          document.getElementById('input-remove-amount').focus();
-          return;
-        }
-
         const moveBtn = e.target.closest('.btn-move-money');
         if (moveBtn) {
-          // FIX: stopPropagation — prevent card selection from also firing
           e.stopPropagation();
-          if (state.envelopes.length < 2) {
-            alert('You need at least two envelopes to move money.');
-            return;
-          }
           document.getElementById('form-move-money').reset();
           document.getElementById('error-move-amount').classList.add('hidden');
           populateEnvelopeSelect('input-move-from');
           document.getElementById('input-move-from').value = moveBtn.dataset.envelopeId;
-          populateEnvelopeSelect('input-move-to', moveBtn.dataset.envelopeId);
+          populateMoveToSelect(moveBtn.dataset.envelopeId);
           openModal('modal-move-money');
           return;
         }
@@ -1858,6 +2278,31 @@
           // FIX: stopPropagation — prevent card selection from also firing
           e.stopPropagation();
           handleDeleteEnvelope(deleteBtn.dataset.envelopeId);
+          return;
+        }
+
+        const reorderUpBtn = e.target.closest('.btn-reorder-up');
+        if (reorderUpBtn) {
+          e.stopPropagation();
+          const id = reorderUpBtn.dataset.envelopeId;
+          const idx = state.envelopes.findIndex(env => env.id === id);
+          const pinnedIdx = state.envelopes.findIndex(env => env.isPinned === true);
+          if (idx <= pinnedIdx + 1) return;
+          [state.envelopes[idx - 1], state.envelopes[idx]] = [state.envelopes[idx], state.envelopes[idx - 1]];
+          saveData(KEYS.envelopes, state.envelopes);
+          renderApp();
+          return;
+        }
+
+        const reorderDownBtn = e.target.closest('.btn-reorder-down');
+        if (reorderDownBtn) {
+          e.stopPropagation();
+          const id = reorderDownBtn.dataset.envelopeId;
+          const idx = state.envelopes.findIndex(env => env.id === id);
+          if (idx >= state.envelopes.length - 1) return;
+          [state.envelopes[idx + 1], state.envelopes[idx]] = [state.envelopes[idx], state.envelopes[idx + 1]];
+          saveData(KEYS.envelopes, state.envelopes);
+          renderApp();
           return;
         }
 
@@ -1890,11 +2335,33 @@
           return;
         }
 
+        // Mobile inline panel toggle — switch between Transactions and Budget Activity
+        const inlineToggle = e.target.closest('.btn-mobile-inline-toggle');
+        if (inlineToggle) {
+          e.stopPropagation();
+          mobileInlineViewMode = inlineToggle.dataset.mode;
+          renderEnvelopes();
+          return;
+        }
+
+        // Mobile back button — collapse inline transactions and return to full list
+        if (e.target.closest('.btn-mobile-back')) {
+          mobileSelectedEnvelopeId = null;
+          renderApp();
+          return;
+        }
+
         // Clicking the card body selects/deselects the envelope filter
         const card = e.target.closest('[data-envelope-id]');
         if (card) {
           const id = card.dataset.envelopeId;
-          state.selectedEnvelopeId = state.selectedEnvelopeId === id ? null : id;
+          if (isMobile()) {
+            const wasSelected = mobileSelectedEnvelopeId === id;
+            mobileSelectedEnvelopeId = wasSelected ? null : id;
+            if (!wasSelected) mobileInlineViewMode = 'transactions';
+          } else {
+            state.selectedEnvelopeId = state.selectedEnvelopeId === id ? null : id;
+          }
           renderApp();
         }
       });
@@ -2026,18 +2493,86 @@
         if (!confirm('Load demo data? This will replace all current data.')) return;
         loadDemoData();
       });
+
+      // Mobile data management buttons
+      document.getElementById('btn-export-mobile').addEventListener('click', handleExport);
+      document.getElementById('btn-export-csv-mobile').addEventListener('click', handleExportCSV);
+
+      document.getElementById('btn-import-toggle-mobile').addEventListener('click', () => {
+        const el = document.getElementById('import-options-mobile');
+        el.classList.toggle('hidden');
+        if (!el.classList.contains('hidden')) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+
+      const importModeMobile = document.getElementById('import-mode-mobile');
+      const importHintMobile = document.getElementById('import-mode-hint-mobile');
+      function updateImportHintMobile() {
+        const hints = {
+          full:               'Replaces all data (envelopes, balances, and activity)',
+          envelopes:          'Keeps envelope names only. Resets balances and all activity',
+          envelopes_balances: 'Keeps envelopes and balances. Resets all activity',
+        };
+        importHintMobile.textContent = hints[importModeMobile.value] || '';
+      }
+      importModeMobile.addEventListener('change', updateImportHintMobile);
+      updateImportHintMobile();
+
+      document.getElementById('input-import-mobile').addEventListener('change', e => {
+        const mode = document.getElementById('import-mode-mobile').value;
+        handleImport(e, mode);
+      });
+
+      // Backup reminder modal — open from desktop and mobile buttons
+      function openBackupReminderModal() {
+        const current = loadValue(KEYS.backupReminderFrequency, null);
+        document.getElementById('input-backup-frequency').value = current || '';
+        openModal('modal-backup-reminder');
+      }
+      document.getElementById('btn-backup-reminder').addEventListener('click', openBackupReminderModal);
+      document.getElementById('btn-backup-reminder-mobile').addEventListener('click', openBackupReminderModal);
+
+      document.getElementById('btn-save-backup-reminder').addEventListener('click', () => {
+        const val = document.getElementById('input-backup-frequency').value;
+        saveData(KEYS.backupReminderFrequency, val || null);
+        // If a frequency is now set and no backup date recorded, start the clock from today
+        if (val && !loadValue(KEYS.lastBackupDate, null)) {
+          saveData(KEYS.lastBackupDate, getToday());
+        }
+        closeAllModals();
+        renderBackupReminderBanner();
+      });
+
     }
+
+    // Delegated outside wireEvents so a JS error earlier in wiring can't block these
+    document.body.addEventListener('click', e => {
+      if (e.target.closest('#btn-reset-mobile')) {
+        showMobileConfirm('This will delete ALL data. Continue?', doResetData);
+        return;
+      }
+      if (e.target.closest('#btn-load-demo-mobile')) {
+        showMobileConfirm('Load demo data? This will replace all current data.', loadDemoData);
+      }
+    });
 
 
     // Reset handler — clears all app data, then reinitializes with only the default Savings envelope.
     // Sets hasSeenDemo so demo never auto-loads again after a reset.
-    function handleResetData() {
-      if (!confirm('This will delete ALL data. Continue?')) return;
+    function doResetData() {
+      const savedFreq       = loadValue(KEYS.backupReminderFrequency, null);
+      const savedLastBackup = loadValue(KEYS.lastBackupDate, null);
       localStorage.removeItem(KEYS.appData);
       localStorage.setItem(KEYS.hasSeenDemo, 'true');
       // Pre-save the default Savings envelope so init() loads it on reload instead of blank state
       saveData(KEYS.envelopes, [createSavingsEnvelope()]);
+      if (savedFreq !== null)       saveData(KEYS.backupReminderFrequency, savedFreq);
+      if (savedLastBackup !== null) saveData(KEYS.lastBackupDate, savedLastBackup);
       location.reload();
+    }
+
+    function handleResetData() {
+      if (!confirm('This will delete ALL data. Continue?')) return;
+      doResetData();
     }
 
 
@@ -2087,6 +2622,8 @@
       // Load savings goal (0 if never set)
       state.savingsGoal = loadValue(KEYS.savingsGoal, 0);
 
+      // Backup reminder settings loaded on demand via loadValue — no state needed
+
       // Always open on the current calendar month
       const now = new Date();
       state.currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -2107,6 +2644,92 @@
 
     document.addEventListener('DOMContentLoaded', init);
 
+  </script>
+
+
+  <!-- ============================================================
+    MOBILE BOTTOM NAV — only visible on screens < 768 px.
+    Three evenly-spaced tabs: Overview | Envelopes | Transactions
+  ============================================================ -->
+  <nav id="mobile-nav"
+    class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-40"
+    style="height:4rem">
+    <div class="flex h-full">
+
+      <!-- Overview tab -->
+      <button data-tab="overview"
+        class="mobile-tab-btn flex-1 flex flex-col items-center justify-center gap-0.5 text-xs text-indigo-600"
+        aria-label="Overview">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 12l9-9 9 9M5 10v9a1 1 0 001 1h4v-5h4v5h4a1 1 0 001-1v-9" />
+        </svg>
+        Overview
+      </button>
+
+      <!-- Envelopes tab -->
+      <button data-tab="envelopes"
+        class="mobile-tab-btn flex-1 flex flex-col items-center justify-center gap-0.5 text-xs text-gray-400"
+        aria-label="Envelopes">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 8l9 6 9-6M4 6h16a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V8a2 2 0 012-2z" />
+        </svg>
+        Envelopes
+      </button>
+
+      <!-- Transactions tab -->
+      <button data-tab="transactions"
+        class="mobile-tab-btn flex-1 flex flex-col items-center justify-center gap-0.5 text-xs text-gray-400"
+        aria-label="Transactions">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        </svg>
+        Transactions
+      </button>
+
+    </div>
+  </nav>
+
+
+  <!-- ============================================================
+    MOBILE TAB SWITCHING — pure view-layer UI, no data/logic changes.
+    Reads and writes document.body.dataset.tab only.
+  ============================================================ -->
+  <script>
+    (function () {
+      function switchTab(tab) {
+        document.body.dataset.tab = tab;
+        document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+          const active = btn.dataset.tab === tab;
+          btn.classList.toggle('text-indigo-600', active);
+          btn.classList.toggle('text-gray-400', !active);
+        });
+      }
+
+      document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+
+      // Start on the Overview tab
+      switchTab('overview');
+    })();
+  </script>
+
+
+  <!-- ============================================================
+    SERVICE WORKER REGISTRATION — enables offline support and PWA install.
+  ============================================================ -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
   </script>
 
 </body>
