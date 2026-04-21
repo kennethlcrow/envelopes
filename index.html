@@ -676,10 +676,19 @@
       }, 0);
     }
 
-    // Total Assigned — sum of every envelope's monthly budget.
-    // Represents the spending plan. Not affected by actual spending.
+    // Total Assigned — sum of every envelope's monthlyBudget, INCLUDING soft-deleted
+    // envelopes. Deleted envelopes are kept in state with monthlyBudget = spent so that
+    // Total Assigned only drops by the unspent remaining, and TBB rises by exactly that.
     function calcTotalAssigned() {
       return state.envelopes.reduce((sum, e) => sum + e.monthlyBudget, 0);
+    }
+
+    // Envelopes visible in the UI — excludes soft-deleted envelopes.
+    // Use this everywhere the user sees or interacts with envelopes.
+    // calcTotalAssigned() intentionally does NOT use this so deleted spent budgets
+    // continue to anchor Total Assigned.
+    function activeEnvelopes() {
+      return state.envelopes.filter(e => !e.isDeleted);
     }
 
     // To Be Budgeted — how much income is left after covering all envelope budgets.
@@ -792,7 +801,7 @@
     // Pass excludeId to omit one envelope (used in the Move Money "To" list).
     function populateEnvelopeSelect(selectId, excludeId = null, excludePinned = false) {
       const select = document.getElementById(selectId);
-      select.innerHTML = state.envelopes
+      select.innerHTML = activeEnvelopes()
         .filter(e => e.id !== excludeId && (!excludePinned || !e.isPinned))
         .map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`)
         .join('');
@@ -991,7 +1000,7 @@
       // NEW BUTTON: pre-calculate TBB once so each card can hide the button when TBB ≤ 0
       const tbb = calcToBeBudgeted();
 
-      if (state.envelopes.length === 0) {
+      if (activeEnvelopes().length === 0) {
         container.innerHTML = `
           <p class="text-sm text-gray-400 text-center py-10">
             No data yet. Create an envelope or load demo data.
@@ -1001,8 +1010,8 @@
 
       // On mobile with a card expanded, only show that card (plus inline txns below it)
       const envsToRender = (isMobile() && mobileSelectedEnvelopeId)
-        ? state.envelopes.filter(env => env.id === mobileSelectedEnvelopeId)
-        : state.envelopes;
+        ? activeEnvelopes().filter(env => env.id === mobileSelectedEnvelopeId)
+        : activeEnvelopes();
 
       container.innerHTML = envsToRender.map(env => {
         const spent      = calcEnvelopeSpent(env.id);
@@ -1128,7 +1137,7 @@
 
       // After innerHTML is set, render the savings chart into the injected canvas (if applicable)
       if (isMobile() && mobileSelectedEnvelopeId) {
-        const selEnv = state.envelopes.find(e => e.id === mobileSelectedEnvelopeId);
+        const selEnv = activeEnvelopes().find(e => e.id === mobileSelectedEnvelopeId);
         if (selEnv && selEnv.isPinned === true) {
           renderMobileSavingsChart(mobileSelectedEnvelopeId);
         } else {
@@ -1388,7 +1397,7 @@
 
     // Demo mode detected by the presence of demo-prefixed envelope IDs — no separate flag needed
     function renderDemoBanner() {
-      const isDemo = state.envelopes.some(e => e.id.startsWith('demo_'));
+      const isDemo = activeEnvelopes().some(e => e.id.startsWith('demo_'));
       document.getElementById('demo-banner').classList.toggle('hidden', !isDemo);
     }
 
@@ -1635,7 +1644,7 @@
         nameErr.classList.remove('hidden');
         return;
       }
-      if (state.envelopes.some(env => env.name.toLowerCase() === name.toLowerCase())) {
+      if (activeEnvelopes().some(env => env.name.toLowerCase() === name.toLowerCase())) {
         nameErr.textContent = 'An envelope with this name already exists.';
         nameErr.classList.remove('hidden');
         return;
@@ -1662,7 +1671,10 @@
       renderApp();
     }
 
-    // Delete an envelope and cascade-delete all its transactions
+    // Delete an envelope.
+    // Expense transactions are orphaned (envelopeId → null) so Total Cash stays correct.
+    // monthlyBudget is reduced to spent-only before removal so Total Assigned drops by
+    // only the unspent remaining, freeing exactly that amount back to TBB.
     function handleDeleteEnvelope(envelopeId) {
       const env = state.envelopes.find(e => e.id === envelopeId);
       if (!env) return;
@@ -1671,16 +1683,38 @@
         return;
       }
 
-      const txnCount = state.transactions.filter(t => t.envelopeId === envelopeId).length;
-      const msg = txnCount > 0
-        ? `Delete "${env.name}"? This will also delete ${txnCount} transaction(s).`
-        : `Delete "${env.name}"?`;
+      // All-time spent for this envelope (not month-filtered).
+      const spent = state.transactions
+        .filter(t => t.type === 'expense' && t.envelopeId === envelopeId)
+        .reduce((sum, t) => sum + t.amount, 0);
+      const remaining = env.monthlyBudget - spent;
+
+      let msg;
+      if (spent === 0) {
+        msg = `Delete "${env.name}"?`;
+      } else if (remaining > 0) {
+        msg = `Delete "${env.name}"? Its ${formatMoney(remaining)} remaining will be returned to TBB. Spent transactions (${formatMoney(spent)}) will be kept in your transaction history.`;
+      } else {
+        msg = `Delete "${env.name}"? This envelope is fully spent. Its transactions (${formatMoney(spent)}) will be kept in your transaction history.`;
+      }
 
       if (!confirm(msg)) return;
 
-      state.envelopes    = state.envelopes.filter(e => e.id !== envelopeId);
-      state.transactions = state.transactions.filter(t => t.envelopeId !== envelopeId);
-      state.budgetLog    = state.budgetLog.filter(
+      // Soft-delete: mark isDeleted and clamp monthlyBudget to spent.
+      // The envelope stays in state.envelopes so calcTotalAssigned() still counts
+      // the spent portion — TBB only rises by `remaining`, not the full monthlyBudget.
+      // activeEnvelopes() filters isDeleted envelopes from all UI surfaces.
+      state.envelopes = state.envelopes.map(e =>
+        e.id === envelopeId ? { ...e, monthlyBudget: spent, isDeleted: true } : e
+      );
+
+      // Orphan expense transactions so they still count against Total Cash.
+      state.transactions = state.transactions.map(t =>
+        t.envelopeId === envelopeId ? { ...t, envelopeId: null } : t
+      );
+
+      // Budget log entries are display-only — remove references to the deleted envelope.
+      state.budgetLog = state.budgetLog.filter(
         entry => entry.fromEnvelopeId !== envelopeId && entry.toEnvelopeId !== envelopeId
       );
 
@@ -1689,6 +1723,7 @@
       saveData(KEYS.budgetLog,    state.budgetLog);
 
       if (state.selectedEnvelopeId === envelopeId) state.selectedEnvelopeId = null;
+      if (mobileSelectedEnvelopeId === envelopeId) mobileSelectedEnvelopeId = null;
 
       renderApp();
     }
@@ -1702,7 +1737,7 @@
       }
       const name = newName.trim();
       if (!name) return;
-      if (state.envelopes.some(e => e.id !== envelopeId && e.name.toLowerCase() === name.toLowerCase())) {
+      if (activeEnvelopes().some(e => e.id !== envelopeId && e.name.toLowerCase() === name.toLowerCase())) {
         alert('Envelope name already exists.');
         return;
       }
@@ -1921,7 +1956,7 @@
       }
 
       const payload = JSON.stringify({
-        envelopes:    state.envelopes,
+        envelopes:    activeEnvelopes(),
         transactions: state.transactions,
         budgetLog:    state.budgetLog,
         savingsGoal:  state.savingsGoal,
@@ -2122,6 +2157,7 @@
         });
         const seenNames = new Set();
         state.envelopes = state.envelopes.filter(e => {
+          if (e.isDeleted) return true; // phantom accounting entries — always keep
           const key = e.name.toLowerCase();
           if (seenNames.has(key)) return false;
           seenNames.add(key);
@@ -2185,7 +2221,7 @@
 
       // Open: Add Expense modal
       document.getElementById('btn-add-expense').addEventListener('click', () => {
-        if (state.envelopes.length === 0) {
+        if (activeEnvelopes().length === 0) {
           alert('Create at least one envelope before adding an expense.');
           return;
         }
@@ -2193,7 +2229,7 @@
         document.getElementById('error-expense-amount').classList.add('hidden');
         populateEnvelopeSelect('input-expense-envelope', null, true);
         // Only pre-select if it's not the Savings envelope
-        const preselect = state.envelopes.find(e => e.id === state.selectedEnvelopeId);
+        const preselect = activeEnvelopes().find(e => e.id === state.selectedEnvelopeId);
         if (preselect && !preselect.isPinned) {
           document.getElementById('input-expense-envelope').value = state.selectedEnvelopeId;
         }
@@ -2645,6 +2681,7 @@
         });
         const seenNames = new Set();
         state.envelopes = state.envelopes.filter(e => {
+          if (e.isDeleted) return true; // phantom accounting entries — always keep
           const key = e.name.toLowerCase();
           if (seenNames.has(key)) return false;
           seenNames.add(key);
