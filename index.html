@@ -1910,6 +1910,16 @@
     // Download all data as a JSON file.
     // Bundles envelopes, transactions, and settings as per the plan.
     function handleExport() {
+      const tbb = calcToBeBudgeted();
+      if (tbb > 0) {
+        alert('Cannot export: you have unassigned money (TBB is not $0). Assign all funds to envelopes before exporting.');
+        return;
+      }
+      if (tbb < 0) {
+        alert('Cannot export: you are over-budgeted (TBB is not $0). Reduce envelope totals before exporting.');
+        return;
+      }
+
       const payload = JSON.stringify({
         envelopes:    state.envelopes,
         transactions: state.transactions,
@@ -2059,25 +2069,43 @@
           state.transactions = [];
           state.budgetLog    = [];
         } else if (importMode === 'envelopes_balances') {
-          // Keep envelopes with their assigned budgets; clear all activity.
-          // Inject one bootstrap income transaction equal to total assigned so TBB === $0.
-          state.envelopes = data.envelopes.map(e => ({ ...e }));
-          state.budgetLog = [];
+          // Compute all-time spent per envelope from the imported file's transactions
+          // BEFORE clearing anything. Use all transactions regardless of date.
+          const spentByEnvelope = (data.transactions || []).reduce((map, t) => {
+            if (t.type === 'expense' && t.envelopeId) {
+              map[t.envelopeId] = (map[t.envelopeId] || 0) + t.amount;
+            }
+            return map;
+          }, {});
 
-          const importedAssignedTotal = state.envelopes.reduce(
-            (sum, e) => sum + (e.monthlyBudget || 0), 0
-          );
-          state.transactions = importedAssignedTotal > 0
-            ? [{
-                id:          generateId('txn'),
-                type:        'income',
-                envelopeId:  null,
-                amount:      importedAssignedTotal,
-                description: 'Imported Starting Balance',
-                date:        getToday(),
-                createdAt:   new Date().toISOString(),
-              }]
-            : [];
+          // Set each envelope's monthlyBudget to its remaining balance (assigned minus spent).
+          // Floor at 0 — we don't carry negative balances forward.
+          state.envelopes = data.envelopes.map(e => {
+            const assigned  = e.monthlyBudget || 0;
+            const spent     = spentByEnvelope[e.id] || 0;
+            const remaining = Math.max(0, assigned - spent);
+            return { ...e, monthlyBudget: remaining };
+          });
+
+          // Clear all historical activity.
+          state.transactions = [];
+          state.budgetLog    = [];
+
+          // Inject one synthetic income transaction equal to the sum of the new
+          // monthlyBudgets (i.e. the sum of old remaining balances).
+          // This makes Total Cash = Total Assigned = sum of remainders, and TBB = $0.
+          const startingBalance = state.envelopes.reduce((sum, e) => sum + e.monthlyBudget, 0);
+          if (startingBalance > 0) {
+            state.transactions = [{
+              id:          generateId('txn'),
+              type:        'income',
+              envelopeId:  null,
+              amount:      startingBalance,
+              description: 'Starting Balance',
+              date:        getToday(),
+              createdAt:   new Date().toISOString(),
+            }];
+          }
         }
 
         state.envelopes = sortSavingsFirst(state.envelopes);
