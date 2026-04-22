@@ -15,7 +15,8 @@
       "Bash(gh release create v1.3.0 --title v1.3.0 --notes ' *)",
       "Bash(where gh *)",
       "Bash('C:/Program Files/GitHub CLI/gh.exe' release create v1.3.0 --title v1.3.0 --notes ' *)",
-      "Bash(git branch *)"
+      "Bash(git branch *)",
+      "Bash(grep -v \"^\\\\s*//\")"
     ]
   }
 }
